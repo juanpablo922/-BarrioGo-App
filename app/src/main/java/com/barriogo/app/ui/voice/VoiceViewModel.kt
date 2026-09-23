@@ -1,0 +1,113 @@
+package com.barriogo.app.ui.voice
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.barriogo.app.AppContainer
+import com.barriogo.app.ai.AgentResult
+import com.barriogo.app.ai.ClientRef
+import com.barriogo.app.ai.MovementAgent
+import com.barriogo.app.ai.MovementDraft
+import com.barriogo.app.ai.VoiceRecognizer
+import com.barriogo.app.data.MovementEntity
+import com.barriogo.app.domain.MovementType
+import com.barriogo.app.domain.PayMethod
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+enum class VoicePhase { IDLE, LISTENING, PROCESSING, PROPOSAL, NOT_UNDERSTOOD, SAVED }
+
+data class VoiceUiState(
+    val phase: VoicePhase = VoicePhase.IDLE,
+    val mode: MovementType = MovementType.VENTA,
+    val transcript: String = "",
+    val draft: MovementDraft? = null,
+    val reason: String? = null,
+    val error: String? = null,
+)
+
+/**
+ * ViewModel de la captura por voz. Es el puente entre el sensor (VoiceRecognizer) y el agente
+ * de reglas (MovementAgent): perciBe -> interpreta -> valida -> (el usuario) decide y confirma -> actúa.
+ */
+class VoiceViewModel(private val container: AppContainer) : ViewModel() {
+    private val _state = MutableStateFlow(VoiceUiState())
+    val state: StateFlow<VoiceUiState> = _state
+
+    private var recognizer: VoiceRecognizer? = null
+    private var profileId: Long = 0
+    private var profileName: String = ""
+    private var sessionId: Long? = null
+
+    init {
+        viewModelScope.launch { container.activeProfileId.collect { id -> profileId = id ?: 0; profileName = id?.let { container.repo.profile(it)?.name } ?: "" } }
+        viewModelScope.launch { container.repo.activeSession.collect { sessionId = it?.id } }
+    }
+
+    fun setMode(mode: MovementType) { _state.value = _state.value.copy(mode = mode) }
+
+    fun startListening(context: Context) {
+        val r = recognizer ?: VoiceRecognizer(context).also { recognizer = it }
+        _state.value = _state.value.copy(phase = VoicePhase.LISTENING, error = null)
+        r.start(
+            onListening = { _state.value = _state.value.copy(phase = VoicePhase.LISTENING) },
+            onResult = { text -> onTranscript(text) },
+            onError = { msg -> _state.value = _state.value.copy(phase = VoicePhase.IDLE, error = msg) },
+        )
+    }
+
+    fun stopListening() { recognizer?.stop() }
+
+    private fun onTranscript(text: String) {
+        _state.value = _state.value.copy(phase = VoicePhase.PROCESSING, transcript = text)
+        viewModelScope.launch {
+            // Una sola lectura del estado actual de clientes; no hace falta observarlos en vivo aquí.
+            val clients = container.repo.clients.first().map { c -> ClientRef(c.id, c.name) }
+            when (val r = MovementAgent.parse(text, _state.value.mode, clients)) {
+                is AgentResult.Ok -> _state.value = _state.value.copy(phase = VoicePhase.PROPOSAL, draft = r.draft, error = null)
+                is AgentResult.NotUnderstood -> _state.value = _state.value.copy(phase = VoicePhase.NOT_UNDERSTOOD, reason = r.reason)
+            }
+        }
+    }
+
+    /** V4 · Editar por voz: cambia solo lo que se dijo en la corrección, sin perder el resto. */
+    fun editWithVoice(text: String) {
+        val current = _state.value.draft ?: return
+        val updated = MovementAgent.applyEdit(current, text)
+        _state.value = _state.value.copy(draft = updated, transcript = text)
+    }
+
+    fun retry() { _state.value = _state.value.copy(phase = VoicePhase.IDLE, draft = null, reason = null, transcript = "") }
+
+    fun confirm(onSaved: () -> Unit) {
+        val d = _state.value.draft ?: return
+        viewModelScope.launch {
+            var clientId = d.clientId
+            if (clientId == null && d.type == MovementType.FIADO && !d.heardClient.isNullOrBlank()) {
+                clientId = container.repo.addClient(d.heardClient, "")
+            }
+            container.repo.insertMovement(
+                MovementEntity(
+                    type = d.type.name,
+                    amount = d.amount,
+                    title = if (d.type == MovementType.VENTA) (if (d.items.isEmpty()) "Venta" else d.itemText) else "Fiado",
+                    detail = if (d.type == MovementType.VENTA) "Por voz" else d.itemText,
+                    quantity = d.quantity,
+                    payMethod = d.payMethod.name,
+                    clientId = clientId,
+                    profileId = profileId,
+                    profileName = profileName,
+                    sessionId = sessionId,
+                    createdAt = System.currentTimeMillis(),
+                    extra = "voz",
+                ),
+            )
+            _state.value = _state.value.copy(phase = VoicePhase.SAVED)
+            onSaved()
+        }
+    }
+
+    override fun onCleared() { recognizer?.release(); super.onCleared() }
+}
