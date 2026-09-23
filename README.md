@@ -85,9 +85,4 @@ preguntan por ellas en la sustentación:
 | V1 Registrar por voz, V2/V3 Confirmar, V4 Editar por voz | `ui/voice/` |
 | C1/C2 Escanear, C3 Revisar factura | `ui/scan/` |
 
-## Si algo no compila
 
-No pude compilar este proyecto en el entorno donde lo escribí (no tiene Android SDK). Lo revisé
-línea por línea contra las clases de datos y el repositorio para que los nombres coincidan, pero si
-Android Studio marca algún error, es casi seguro un detalle menor (un import que falta, un nombre
-mal escrito) — cópienmelo tal cual lo muestra Android Studio y lo corrijo.
