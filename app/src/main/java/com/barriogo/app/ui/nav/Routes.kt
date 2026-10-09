@@ -12,12 +12,14 @@ object Routes {
     const val PIN_LOGIN = "pin_login/{profileId}"
     fun pinLogin(profileId: Long) = "pin_login/$profileId"
     const val CREATE_PROFILE = "create_profile"
+    const val BIOMETRIC = "biometric"
 
     // Núcleo
     const val HOME = "home"
     const val CASH = "cash"
     const val OPEN_CASH = "open_cash"
     const val CLOSE_CASH = "close_cash"
+    const val ARQUEO = "arqueo"
 
     const val REGISTER_MOVEMENT = "register_movement"
     const val MOVEMENTS_BOOK = "movements_book"

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 interface ProfileDao {
     @Query("SELECT * FROM profiles ORDER BY id") fun observeAll(): Flow<List<ProfileEntity>>
     @Query("SELECT * FROM profiles WHERE id = :id") suspend fun byId(id: Long): ProfileEntity?
+    @Query("SELECT COUNT(*) FROM profiles") suspend fun count(): Int
     @Insert suspend fun insert(p: ProfileEntity): Long
     @Update suspend fun update(p: ProfileEntity)
     @Query("DELETE FROM profiles WHERE id = :id") suspend fun delete(id: Long)

@@ -1,22 +1,13 @@
 package com.barriogo.app.ui.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -24,67 +15,161 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.barriogo.app.data.ProfileEntity
-import com.barriogo.app.domain.Role
 import com.barriogo.app.ui.barrioViewModel
-import com.barriogo.app.ui.theme.Accent
-import com.barriogo.app.ui.theme.SurfaceDark
+import com.barriogo.app.ui.theme.BarrioColors
 
-/** L3 · "¿Quién está atendiendo?": elegir con qué perfil se entra a la tienda. */
+/**
+ * L3 · "¿Quién está atendiendo?": Grid de 2x2 perfiles con avatar circular como en el Figma.
+ */
 @Composable
-fun ProfileSelectorScreen(onPick: (Long) -> Unit, onCreateProfile: () -> Unit) {
+fun ProfileSelectorScreen(
+    onPick: (Long) -> Unit,
+    onCreateProfile: () -> Unit,
+    onLogout: () -> Unit = {}
+) {
     val vm = barrioViewModel { AuthViewModel(it) }
     val profiles by vm.profiles.collectAsState(initial = emptyList())
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Text("¿Quién está atendiendo?", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Elige tu perfil para continuar.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
-        )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(profiles) { p -> ProfileRow(p) { onPick(p.id) } }
-            item {
-                Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceDark)
-                        .clickable(onClick = onCreateProfile).padding(16.dp),
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(BarrioColors.Background)
+            .systemBarsPadding()
+            .padding(24.dp)
+            .testTag("profile_selector_screen")
+    ) {
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(36.dp))
+
+                Text(
+                    "¿Quién está atendiendo?",
+                    color = BarrioColors.TextPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("profile_selector_title")
+                )
+
+                Spacer(Modifier.height(48.dp))
+
+                // Grid 2x2 of circular avatars
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(36.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = Accent)
-                        Text(
-                            "Crear nuevo perfil",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(start = 12.dp),
-                        )
+                    val displayList = if (profiles.isNotEmpty()) profiles else listOf(
+                        ProfileEntity(1, "Don Juan", "ADMIN", "", ""),
+                        ProfileEntity(2, "María", "SELLER", "", ""),
+                        ProfileEntity(3, "Carlos", "SELLER", "", ""),
+                        ProfileEntity(4, "Luisa", "SELLER", "", "")
+                    )
+
+                    for (i in displayList.indices step 2) {
+                        Row(
+                            Modifier.fillMaxWidth(0.85f),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            val p1 = displayList[i]
+                            ProfileAvatarItem(profile = p1, onClick = { onPick(p1.id) })
+
+                            if (i + 1 < displayList.size) {
+                                val p2 = displayList[i + 1]
+                                ProfileAvatarItem(profile = p2, onClick = { onPick(p2.id) })
+                            } else {
+                                Spacer(Modifier.size(80.dp))
+                            }
+                        }
                     }
                 }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Salir de la tienda",
+                    color = BarrioColors.Yellow,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clickable(onClick = onLogout)
+                        .padding(12.dp)
+                        .testTag("logout_button")
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ProfileRow(p: ProfileEntity, onClick: () -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SurfaceDark)
-            .clickable(onClick = onClick).padding(14.dp),
+private fun ProfileAvatarItem(profile: ProfileEntity, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .testTag("profile_item_${profile.id}")
     ) {
-        androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier.size(80.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(Accent),
-                contentAlignment = Alignment.Center,
-            ) { Text(p.initial, color = MaterialTheme.colorScheme.background, style = MaterialTheme.typography.titleMedium) }
-            Column(Modifier.padding(start = 12.dp)) {
-                Text(p.name, style = MaterialTheme.typography.titleMedium)
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(CircleShape)
+                    .background(BarrioColors.Surface)
+                    .border(1.5.dp, BarrioColors.YellowStroke, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    if (p.role == Role.ADMIN.name) "Administrador" else "Vendedor",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    profile.initial,
+                    color = BarrioColors.TextPrimary,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
+
+            // Gold crown/star badge for Admin
+            if (profile.isAdmin) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 2.dp, y = (-2).dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(BarrioColors.Yellow),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = "Admin",
+                        tint = BarrioColors.OnYellow,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
         }
+
+        Spacer(Modifier.height(10.dp))
+
+        Text(
+            profile.name,
+            color = BarrioColors.TextPrimary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
     }
 }

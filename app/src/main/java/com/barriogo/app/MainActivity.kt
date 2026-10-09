@@ -11,6 +11,10 @@ import androidx.compose.ui.Modifier
 import com.barriogo.app.ui.nav.BarrioGoNavGraph
 import com.barriogo.app.ui.theme.BarrioGoTheme
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,7 +26,9 @@ class MainActivity : ComponentActivity() {
 /** Raíz de la interfaz: tema + navegación. Nombrada distinto de la clase Application (BarrioGoApp). */
 @Composable
 private fun BarrioGoRoot() {
-    BarrioGoTheme(darkTheme = true) {
+    val app = LocalContext.current.applicationContext as BarrioGoApp
+    val isDark by app.container.store.darkTheme.collectAsState()
+    BarrioGoTheme(darkTheme = isDark) {
         Surface(modifier = Modifier.fillMaxSize()) {
             BarrioGoNavGraph()
         }

@@ -16,6 +16,7 @@ data class RegisterState(
     val step: Int = 0,                       // 0 = datos del propietario, 1 = categoría, 2 = contraseña
     val ownerName: String = "",
     val storeName: String = "",
+    val address: String = "",
     val phone: String = "",
     val email: String = "",
     val category: String = "",
@@ -79,6 +80,7 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
         val s = _register.value
         store.ownerName = s.ownerName.trim()
         store.storeName = s.storeName.trim()
+        store.address = s.address.trim()
         store.phone = s.phone.trim()
         store.email = s.email.trim().lowercase()
         store.category = s.category

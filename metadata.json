@@ -1,0 +1,6 @@
+{
+  "name": "BarrioGo",
+  "description": "App de administración para tiendas de barrio con registro por voz, escaneo de facturas, control de caja y fiados.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

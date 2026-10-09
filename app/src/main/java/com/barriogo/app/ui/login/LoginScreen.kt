@@ -41,15 +41,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.barriogo.app.R
 import com.barriogo.app.ui.theme.BarrioColors
 
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
-    onForgotPassword: () -> Unit,
+    onForgotPassword: () -> Unit = {},
     onRegister: () -> Unit,
     onToggleTheme: () -> Unit = {},
     viewModel: LoginViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    var showForgotDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.loginSuccess) {
         if (state.loginSuccess) {
@@ -58,13 +64,43 @@ fun LoginScreen(
         }
     }
 
+    if (showForgotDialog) {
+        AlertDialog(
+            onDismissRequest = { showForgotDialog = false },
+            containerColor = BarrioColors.Surface,
+            title = {
+                Text(
+                    "¿Olvidaste tu contraseña?",
+                    color = BarrioColors.TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    "Para recuperar el acceso a tu tienda, ingresa con el PIN de Administrador (ej. 1234) o comunícate con soporte de BarrioGo: soporte@barriogo.com",
+                    color = BarrioColors.TextHint,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showForgotDialog = false },
+                    modifier = Modifier.testTag("forgot_dialog_ok")
+                ) {
+                    Text("Entendido", color = BarrioColors.Yellow, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     LoginContent(
         state = state,
         onEmailChange = viewModel::onEmailChange,
         onPasswordChange = viewModel::onPasswordChange,
         onTogglePassword = viewModel::togglePasswordVisibility,
         onLogin = viewModel::onLoginClick,
-        onForgotPassword = onForgotPassword,
+        onForgotPassword = { showForgotDialog = true; onForgotPassword() },
         onRegister = onRegister,
         onToggleTheme = onToggleTheme
     )
@@ -89,6 +125,7 @@ fun LoginContent(
             .background(BarrioColors.Background)
             .systemBarsPadding()
             .imePadding()
+            .testTag("login_screen")
     ) {
         // Botón de tema (arriba a la derecha)
         Box(
@@ -97,7 +134,8 @@ fun LoginContent(
                 .padding(top = 20.dp, end = 24.dp)
                 .size(40.dp)
                 .background(BarrioColors.Surface, CircleShape)
-                .clickable(onClick = onToggleTheme),
+                .clickable(onClick = onToggleTheme)
+                .testTag("theme_toggle_button"),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -120,7 +158,9 @@ fun LoginContent(
             Image(
                 painter = painterResource(R.drawable.logo_barriogo),
                 contentDescription = "BarrioGo",
-                modifier = Modifier.width(160.dp)
+                modifier = Modifier
+                    .width(160.dp)
+                    .testTag("barriogo_logo")
             )
 
             Spacer(Modifier.height(32.dp))
@@ -130,7 +170,8 @@ fun LoginContent(
                 color = BarrioColors.TextPrimary,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.testTag("login_title")
             )
 
             Spacer(Modifier.height(40.dp))
@@ -151,7 +192,8 @@ fun LoginContent(
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next,
                 onNext = { focus.moveFocus(FocusDirection.Down) },
-                error = state.emailError
+                error = state.emailError,
+                modifier = Modifier.testTag("email_input")
             )
 
             Spacer(Modifier.height(24.dp))
@@ -167,7 +209,9 @@ fun LoginContent(
                     "Olvidé mi contraseña",
                     color = BarrioColors.Yellow,
                     fontSize = 14.sp,
-                    modifier = Modifier.clickable(onClick = onForgotPassword)
+                    modifier = Modifier
+                        .clickable(onClick = onForgotPassword)
+                        .testTag("forgot_password_link")
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -177,7 +221,10 @@ fun LoginContent(
                 placeholder = "••••••••",
                 leadingIcon = { Icon(Icons.Outlined.Lock, null, tint = BarrioColors.TextPrimary) },
                 trailingIcon = {
-                    IconButton(onClick = onTogglePassword) {
+                    IconButton(
+                        onClick = onTogglePassword,
+                        modifier = Modifier.testTag("password_visibility_toggle")
+                    ) {
                         Icon(
                             if (state.passwordVisible) Icons.Outlined.Visibility
                             else Icons.Outlined.VisibilityOff,
@@ -192,7 +239,8 @@ fun LoginContent(
                 keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done,
                 onDone = { focus.clearFocus(); onLogin() },
-                error = state.passwordError
+                error = state.passwordError,
+                modifier = Modifier.testTag("password_input")
             )
 
             Spacer(Modifier.height(32.dp))
@@ -203,7 +251,8 @@ fun LoginContent(
                 enabled = !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(52.dp)
+                    .testTag("login_button"),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = BarrioColors.Yellow,
@@ -236,7 +285,9 @@ fun LoginContent(
                     color = BarrioColors.Yellow,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable(onClick = onRegister)
+                    modifier = Modifier
+                        .clickable(onClick = onRegister)
+                        .testTag("register_link")
                 )
             }
 

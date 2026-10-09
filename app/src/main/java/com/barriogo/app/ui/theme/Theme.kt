@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 private val DarkScheme = darkColorScheme(
@@ -20,17 +21,20 @@ private val DarkScheme = darkColorScheme(
     outline = Divider,
 )
 
-// Tema claro reservado para una futura iteración (el prototipo lo define en la sección
-// "Tema claro" de Figma); la app usa el tema oscuro, que es el de casi todas las pantallas.
 private val LightScheme = lightColorScheme(
     primary = Accent,
     onPrimary = OnAccent,
-    background = Color(0xFFF5F1E9),
+    background = Color(0xFFF6F3EB),
     surface = Color(0xFFFFFFFF),
+    onBackground = Color(0xFF164030),
+    onSurface = Color(0xFF164030),
 )
 
 @Composable
 fun BarrioGoTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    val palette = if (darkTheme) DarkBarrioPalette else LightBarrioPalette
     val scheme = if (darkTheme) DarkScheme else LightScheme
-    MaterialTheme(colorScheme = scheme, typography = BarrioTypography, content = content)
+    CompositionLocalProvider(LocalBarrioColors provides palette) {
+        MaterialTheme(colorScheme = scheme, typography = BarrioTypography, content = content)
+    }
 }

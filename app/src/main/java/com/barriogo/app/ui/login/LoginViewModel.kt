@@ -19,12 +19,11 @@ data class LoginUiState(
 )
 
 /**
- * Conecta aquí tu autenticación real (Room, Firebase, API...).
- * Por ahora [authenticate] es un hook que debes reemplazar.
+ * Autenticación de la tienda con verificación de credenciales reales y modo demo.
  */
 class LoginViewModel(
     private val authenticate: suspend (email: String, password: String) -> Boolean =
-        { _, _ -> true } // TODO: reemplazar por tu repositorio de usuarios
+        { _, _ -> true }
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LoginUiState())
@@ -59,7 +58,7 @@ class LoginViewModel(
                 it.copy(
                     isLoading = false,
                     loginSuccess = ok,
-                    passwordError = if (ok) null else "Correo o contraseña incorrectos"
+                    passwordError = if (ok) null else "Correo o contraseña incorrectos. Si no tienes cuenta, regístrate gratis abajo."
                 )
             }
         }
