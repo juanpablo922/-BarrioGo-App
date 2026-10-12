@@ -1,7 +1,10 @@
 package com.barriogo.app.ui.voice
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
@@ -9,11 +12,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PointOfSale
 import androidx.compose.material3.*
@@ -29,12 +36,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.barriogo.app.domain.Money
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.theme.BarrioColors
 
 /**
- * V1 · Registrar por voz (Screen 17 del prototipo Figma).
+ * V1 · Registrar por voz: Soporta Ingreso/Venta, Gasto y Fiado.
+ * Cuenta con doble motor: reconocimiento integrado en la app con fallback automático
+ * a la ventana nativa de Google Speech (ACTION_RECOGNIZE_SPEECH).
  */
 @Composable
 fun VoiceCaptureScreen(
@@ -45,23 +55,76 @@ fun VoiceCaptureScreen(
 ) {
     val ctx = LocalContext.current
     val vm = barrioViewModel { VoiceViewModel(it) }
+    val state by vm.state.collectAsState()
     var mode by remember { mutableStateOf(initialMode) }
-    var isListening by remember { mutableStateOf(false) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) {
-            isListening = true
-            vm.setMode(mode)
-            vm.startListening(ctx)
+    // Fallback nativo de Google Voice por si el servicio de fondo del dispositivo o emulador falla
+    val speechIntentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val spokenText = matches?.firstOrNull().orEmpty()
+            if (spokenText.isNotBlank()) {
+                vm.onTranscript(spokenText)
+            }
         }
     }
 
+    fun launchSystemSpeechPrompt() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CO")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Di tu movimiento (ej. Venta de 15 mil en gaseosa, Gasto de 8 mil en bolsas, Fiado de 20 mil a Carlos)")
+        }
+        try {
+            speechIntentLauncher.launch(intent)
+        } catch (_: Exception) {
+            // Si el intent tampoco existe, se informa
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) {
+            vm.setMode(mode)
+            try {
+                vm.startListening(ctx)
+            } catch (_: Exception) {
+                launchSystemSpeechPrompt()
+            }
+        } else {
+            launchSystemSpeechPrompt()
+        }
+    }
+
+    fun startListeningWithFallback() {
+        vm.setMode(mode)
+        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            try {
+                vm.startListening(ctx)
+            } catch (_: Exception) {
+                launchSystemSpeechPrompt()
+            }
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Si VoiceViewModel arroja error de reconocimiento, activar el diálogo nativo
+    LaunchedEffect(state.error) {
+        if (state.error != null && state.phase == VoicePhase.IDLE) {
+            launchSystemSpeechPrompt()
+        }
+    }
+
+    val isListening = state.phase == VoicePhase.LISTENING
     val infiniteTransition = rememberInfiniteTransition(label = "mic_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (isListening) 1.2f else 1.05f,
+        targetValue = if (isListening) 1.25f else 1.04f,
         animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
+            animation = tween(650, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"
@@ -77,6 +140,7 @@ fun VoiceCaptureScreen(
         Column(
             Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -104,136 +168,266 @@ fun VoiceCaptureScreen(
                 Spacer(Modifier.height(6.dp))
 
                 Text(
-                    "Habla y BarrioGo registra el movimiento por ti.",
+                    "Habla y BarrioGo registra ventas, gastos o fiados al instante.",
                     color = BarrioColors.TextHint,
                     fontSize = 14.sp
                 )
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
 
-                // Toggle: Venta vs Fiado
-                Text("¿Qué vas a registrar?", color = BarrioColors.TextHint, fontSize = 13.sp)
+                // Toggle: Venta / Ingreso vs Gasto vs Fiado
+                Text("¿Qué deseas registrar?", color = BarrioColors.TextHint, fontSize = 13.sp)
                 Spacer(Modifier.height(8.dp))
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     VoiceModeTab(
-                        title = "Venta",
+                        title = "Ingreso",
                         icon = Icons.Outlined.PointOfSale,
                         isSelected = mode == MovementType.VENTA,
                         modifier = Modifier.weight(1f),
-                        onClick = { mode = MovementType.VENTA }
+                        onClick = { mode = MovementType.VENTA; vm.setMode(mode) }
+                    )
+                    VoiceModeTab(
+                        title = "Gasto",
+                        icon = Icons.Outlined.AccountBalanceWallet,
+                        isSelected = mode == MovementType.GASTO,
+                        modifier = Modifier.weight(1f),
+                        onClick = { mode = MovementType.GASTO; vm.setMode(mode) }
                     )
                     VoiceModeTab(
                         title = "Fiado",
                         icon = Icons.Outlined.Person,
                         isSelected = mode == MovementType.FIADO,
                         modifier = Modifier.weight(1f),
-                        onClick = { mode = MovementType.FIADO }
+                        onClick = { mode = MovementType.FIADO; vm.setMode(mode) }
                     )
                 }
 
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(22.dp))
 
-                // Microphone Big Card
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(BarrioColors.CardBg)
-                        .border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(24.dp))
-                        .padding(28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .size(96.dp)
-                                .scale(pulseScale)
-                                .clip(CircleShape)
-                                .background(if (isListening) BarrioColors.Yellow.copy(alpha = 0.25f) else BarrioColors.Surface)
-                                .border(2.dp, BarrioColors.Yellow, CircleShape)
-                                .clickable {
-                                    val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                                    if (granted) {
-                                        isListening = !isListening
-                                        if (isListening) {
-                                            vm.setMode(mode)
-                                            vm.startListening(ctx)
-                                        } else {
-                                            vm.stopListening()
-                                        }
-                                    } else {
-                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                // Si ya reconoció y tiene una propuesta lista para confirmar
+                if (state.phase == VoicePhase.PROPOSAL && state.draft != null) {
+                    val d = state.draft!!
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(BarrioColors.CardBg)
+                            .border(1.5.dp, BarrioColors.Yellow, RoundedCornerShape(20.dp))
+                            .padding(20.dp)
+                            .testTag("voice_proposal_card")
+                    ) {
+                        Column {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = when (d.type) {
+                                        MovementType.VENTA -> BarrioColors.PositiveGreen.copy(alpha = 0.2f)
+                                        MovementType.GASTO -> BarrioColors.NegativeRed.copy(alpha = 0.2f)
+                                        else -> BarrioColors.Yellow.copy(alpha = 0.2f)
                                     }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Filled.Mic,
-                                contentDescription = "Micrófono",
-                                tint = BarrioColors.Yellow,
-                                modifier = Modifier.size(46.dp)
+                                ) {
+                                    Text(
+                                        when (d.type) {
+                                            MovementType.VENTA -> "VENTA / INGRESO"
+                                            MovementType.GASTO -> "GASTO"
+                                            else -> "FIADO"
+                                        },
+                                        color = when (d.type) {
+                                            MovementType.VENTA -> BarrioColors.PositiveGreen
+                                            MovementType.GASTO -> BarrioColors.NegativeRed
+                                            else -> BarrioColors.Yellow
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Text(
+                                    "Escuchado 👂",
+                                    color = BarrioColors.TextHint,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            Text(
+                                Money.cop(d.amount),
+                                color = BarrioColors.Yellow,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(Modifier.height(6.dp))
+
+                            val conceptText = when (d.type) {
+                                MovementType.VENTA -> if (d.items.isNotEmpty()) d.itemText else "Venta general"
+                                MovementType.GASTO -> if (d.items.isNotEmpty()) d.itemText else "Gasto de tienda"
+                                else -> "Cliente: ${d.clientName ?: d.heardClient ?: "Pendiente"} · ${if (d.items.isNotEmpty()) d.itemText else "Mercancía"}"
+                            }
+
+                            Text(
+                                conceptText,
+                                color = BarrioColors.TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            if (state.transcript.isNotBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "\"${state.transcript}\"",
+                                    color = BarrioColors.TextHint,
+                                    fontSize = 13.sp,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                )
+                            }
+
+                            Spacer(Modifier.height(20.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedButton(
+                                    onClick = { vm.retry() },
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, BarrioColors.CardSubtle)
+                                ) {
+                                    Icon(Icons.Filled.Refresh, null, tint = BarrioColors.TextHint, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Repetir", color = BarrioColors.TextHint, fontSize = 14.sp)
+                                }
+
+                                Button(
+                                    onClick = { vm.confirm(onConfirmed) },
+                                    modifier = Modifier.weight(1.5f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = BarrioColors.Yellow,
+                                        contentColor = BarrioColors.OnYellow
+                                    )
+                                ) {
+                                    Text("Confirmar", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Tarjeta del Micrófono Central
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(BarrioColors.CardBg)
+                            .border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(24.dp))
+                            .padding(26.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(96.dp)
+                                    .scale(pulseScale)
+                                    .clip(CircleShape)
+                                    .background(if (isListening) BarrioColors.Yellow.copy(alpha = 0.25f) else BarrioColors.Surface)
+                                    .border(2.dp, BarrioColors.Yellow, CircleShape)
+                                    .clickable {
+                                        if (isListening) {
+                                            vm.stopListening()
+                                        } else {
+                                            startListeningWithFallback()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Mic,
+                                    contentDescription = "Micrófono",
+                                    tint = BarrioColors.Yellow,
+                                    modifier = Modifier.size(46.dp)
+                                )
+                            }
+
+                            Spacer(Modifier.height(18.dp))
+
+                            Text(
+                                if (isListening) "Escuchando... Habla ahora"
+                                else if (state.phase == VoicePhase.PROCESSING) "Procesando lo que dijiste..."
+                                else "Toca para hablar",
+                                color = BarrioColors.TextPrimary,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(Modifier.height(6.dp))
+
+                            Text(
+                                if (isListening) "Di por ejemplo: \"Venta de 15 mil en gaseosa\""
+                                else "Pulsa el micrófono o el botón amarillo de abajo",
+                                color = BarrioColors.TextHint,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
                             )
                         }
-
-                        Spacer(Modifier.height(20.dp))
-
-                        Text(
-                            if (isListening) "Escuchando..." else "Mantén presionado para hablar",
-                            color = BarrioColors.TextPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(Modifier.height(6.dp))
-
-                        Text(
-                            "Toca el micrófono y dilo con tus palabras",
-                            color = BarrioColors.TextHint,
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center
-                        )
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                if (state.phase == VoicePhase.NOT_UNDERSTOOD) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        state.reason ?: "No alcancé a entender el valor o concepto. Intenta nuevamente.",
+                        color = BarrioColors.Error,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
-                // Examples Card
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(BarrioColors.Surface.copy(alpha = 0.5f))
-                        .padding(16.dp)
+                Spacer(Modifier.height(18.dp))
+
+                // Atajos de prueba rápida por voz (chips con un solo toque)
+                Text("O prueba con estos ejemplos listos:", color = BarrioColors.TextHint, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column {
-                        Text("Por ejemplo:", color = BarrioColors.Yellow, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "\"Vendí 2 gaseosas por 8 mil\"\n\"Fiado para Marta, arroz y leche, 24 mil\"",
-                            color = BarrioColors.TextHint,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
+                    AssistChip(
+                        onClick = { vm.onTranscript("Venta de 15000 en gaseosas") },
+                        label = { Text("Venta $15k", fontSize = 12.sp, color = BarrioColors.TextPrimary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    AssistChip(
+                        onClick = { vm.onTranscript("Gasto de 8000 en bolsas de empaque") },
+                        label = { Text("Gasto $8k", fontSize = 12.sp, color = BarrioColors.TextPrimary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    AssistChip(
+                        onClick = { vm.onTranscript("Fiado para Carlos arroz y leche 20000") },
+                        label = { Text("Fiado $20k", fontSize = 12.sp, color = BarrioColors.TextPrimary) },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
+            // Barra inferior con botón de hablar y enlace manual
             Column(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Button(
                     onClick = {
-                        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                        if (granted) {
-                            isListening = true
-                            vm.setMode(mode)
-                            vm.startListening(ctx)
+                        if (isListening) {
+                            vm.stopListening()
                         } else {
-                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            startListeningWithFallback()
                         }
                     },
                     modifier = Modifier
@@ -247,22 +441,19 @@ fun VoiceCaptureScreen(
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                 ) {
-                    Text("Mantener para hablar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Filled.Mic, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (isListening) "Terminar de escuchar" else "Activar micrófono",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(12.dp))
 
                 Text(
-                    "Por ahora la voz sirve para ventas y fiados.",
-                    color = BarrioColors.TextHint,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(Modifier.height(6.dp))
-
-                Text(
-                    "¿El micrófono no funciona? Registrar a mano",
+                    "¿Prefieres escribir? Registrar a mano",
                     color = BarrioColors.Yellow,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -291,21 +482,24 @@ private fun VoiceModeTab(
                 RoundedCornerShape(14.dp)
             )
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 16.dp),
+            .padding(vertical = 10.dp, horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
             Icon(
                 icon,
                 contentDescription = null,
                 tint = if (isSelected) BarrioColors.Yellow else BarrioColors.TextHint,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 title,
                 color = if (isSelected) BarrioColors.Yellow else BarrioColors.TextPrimary,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
             )
         }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
@@ -42,9 +43,8 @@ import com.barriogo.app.R
 import com.barriogo.app.ui.theme.BarrioColors
 
 import androidx.compose.ui.platform.testTag
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.zIndex
 
 @Composable
 fun LoginScreen(
@@ -127,25 +127,6 @@ fun LoginContent(
             .imePadding()
             .testTag("login_screen")
     ) {
-        // Botón de tema (arriba a la derecha)
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 24.dp)
-                .size(40.dp)
-                .background(BarrioColors.Surface, CircleShape)
-                .clickable(onClick = onToggleTheme)
-                .testTag("theme_toggle_button"),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.WbSunny,
-                contentDescription = "Cambiar tema",
-                tint = BarrioColors.Yellow,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -155,8 +136,9 @@ fun LoginContent(
         ) {
             Spacer(Modifier.height(32.dp))
 
+            val logoRes = if (BarrioColors.isDark) R.drawable.logo_barriogo else R.drawable.logo_barriogo_light
             Image(
-                painter = painterResource(R.drawable.logo_barriogo),
+                painter = painterResource(logoRes),
                 contentDescription = "BarrioGo",
                 modifier = Modifier
                     .width(160.dp)
@@ -292,6 +274,32 @@ fun LoginContent(
             }
 
             Spacer(Modifier.height(24.dp))
+        }
+
+        // Botón de tema: posicionado al final del Box para garantizar prioridad visual y táctil
+        val context = androidx.compose.ui.platform.LocalContext.current
+        IconButton(
+            onClick = {
+                val app = context.applicationContext as? com.barriogo.app.BarrioGoApp
+                app?.let {
+                    val curr = it.container.store.darkTheme.value
+                    it.container.store.setDark(!curr)
+                }
+                onToggleTheme()
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 20.dp)
+                .size(48.dp)
+                .background(BarrioColors.Surface, CircleShape)
+                .testTag("theme_toggle_button")
+        ) {
+            Icon(
+                imageVector = if (BarrioColors.isDark) Icons.Filled.WbSunny else Icons.Filled.DarkMode,
+                contentDescription = if (BarrioColors.isDark) "Cambiar a modo claro" else "Cambiar a modo oscuro",
+                tint = BarrioColors.Yellow,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

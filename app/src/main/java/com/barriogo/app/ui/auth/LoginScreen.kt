@@ -35,7 +35,11 @@ fun LoginScreen(
         onLoginSuccess = onLoggedIn,
         onForgotPassword = { /* Recuperar clave */ },
         onRegister = onGoRegister,
-        onToggleTheme = onToggleTheme,
+        onToggleTheme = {
+            val curr = app.container.store.darkTheme.value
+            app.container.store.setDark(!curr)
+            onToggleTheme()
+        },
         viewModel = vm,
     )
 }

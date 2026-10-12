@@ -58,7 +58,12 @@ fun ScanInvoiceScreen(onBack: () -> Unit, onDone: () -> Unit, onWriteInstead: ()
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasPermission = it }
 
     if (s.phase == ScanPhase.REVIEW) {
-        ReviewInvoiceScreen(draft = s.draft!!, onBack = onBack, onRetry = { vm.retry() }, onConfirm = { vm.confirm(onDone) })
+        ReviewInvoiceScreen(
+            draft = s.draft!!,
+            onBack = onBack,
+            onRetry = { vm.retry() },
+            onConfirm = { updatedDraft -> vm.confirm(updatedDraft, onDone) }
+        )
         return
     }
 

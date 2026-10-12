@@ -59,7 +59,8 @@ object MovementAgent {
         "cambiale", "queda", "quedo", "debe", "don", "dona", "sr", "sra",
     )
     private val FIADO_WORDS = setOf("fiado", "fiar", "fio", "fie", "fiale", "fiamos", "fiada", "credito")
-    private val SALE_TRIGGERS = setOf("vendi", "vendimos", "vendio", "venta", "ventas", "vendida", "vendido")
+    private val GASTO_WORDS = setOf("gasto", "gastos", "gastamos", "pague", "pagamos", "pago", "compra", "compramos", "salida", "salio", "egreso")
+    private val SALE_TRIGGERS = setOf("vendi", "vendimos", "vendio", "venta", "ventas", "vendida", "vendido", "ingreso", "ingresos", "entro")
     private val ADD_WORDS = setOf("agrega", "agregale", "agregar", "anade", "anadele", "suma", "sumale", "ponle", "mas")
     private val TRANSFER_WORDS = setOf("transferencia", "nequi", "daviplata", "bancolombia", "pse", "tarjeta")
 
@@ -96,14 +97,16 @@ object MovementAgent {
     }
 
     /**
-     * Interpreta una frase. [mode] es lo que el usuario eligió en la pantalla (Venta o Fiado);
-     * si dice "fiado"/"le fío", el agente cambia a fiado por su cuenta.
+     * Interpreta una frase. [mode] es lo que el usuario eligió en la pantalla (Venta, Gasto o Fiado);
+     * si dice "fiado", "gasto", "ingreso", el agente se adapta al tipo correspondiente.
      */
     fun parse(text: String, mode: MovementType, clients: List<ClientRef>): AgentResult {
         val tokens = Txt.tokenize(text)
         if (tokens.isEmpty()) return AgentResult.NotUnderstood("No se escuchó nada")
 
         val isFiado = mode == MovementType.FIADO || tokens.any { it in FIADO_WORDS }
+        val isGasto = !isFiado && (mode == MovementType.GASTO || tokens.any { it in GASTO_WORDS })
+
         val spans = SpanishNumbers.find(tokens)
         val amountSpan = SpanishNumbers.pickAmount(spans, tokens)
         val exclude = HashSet<Int>()
@@ -111,6 +114,17 @@ object MovementAgent {
         val pay = if (tokens.any { it in TRANSFER_WORDS }) PayMethod.TRANSFERENCIA else PayMethod.EFECTIVO
         val amount = amountSpan?.value ?: 0L
 
+        // ---- Caso Gasto ----
+        if (isGasto) {
+            val hasGastoSignal = spans.isNotEmpty() || tokens.any { it in GASTO_WORDS }
+            if (!hasGastoSignal) return AgentResult.NotUnderstood("No parece un gasto")
+            val words = splitItems(tokens, exclude)
+            var desc = words.map { Txt.cap(it) }
+            if (desc.isEmpty()) desc = listOf("Gasto de tienda")
+            return AgentResult.Ok(MovementDraft(MovementType.GASTO, 1, desc, amount, payMethod = pay))
+        }
+
+        // ---- Caso Venta / Ingreso ----
         if (!isFiado) {
             val hasSignal = spans.isNotEmpty() || tokens.any { it in SALE_TRIGGERS }
             if (!hasSignal) return AgentResult.NotUnderstood("No parece una venta")

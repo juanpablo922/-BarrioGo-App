@@ -41,8 +41,10 @@ class ScanViewModel(private val container: AppContainer) : ViewModel() {
 
     fun retry() { _state.value = ScanUiState() }
 
-    fun confirm(onSaved: () -> Unit) {
-        val d = _state.value.draft ?: return
+    fun updateDraft(draft: InvoiceDraft) { _state.value = _state.value.copy(draft = draft) }
+
+    fun confirm(draft: InvoiceDraft? = null, onSaved: () -> Unit) {
+        val d = draft ?: _state.value.draft ?: return
         viewModelScope.launch {
             container.repo.insertMovement(
                 MovementEntity(

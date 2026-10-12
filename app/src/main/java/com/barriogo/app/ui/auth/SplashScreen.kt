@@ -29,7 +29,7 @@ import com.barriogo.app.R
 import com.barriogo.app.ui.theme.BarrioColors
 import kotlinx.coroutines.delay
 
-/** Pantalla de arranque: muestra la marca BarrioGo y navega al Login del prototipo. */
+/** Pantalla de arranque: muestra la portada oficial de BarrioGo y navega al Login del prototipo. */
 @Composable
 fun SplashScreen(
     isRegistered: Boolean,
@@ -42,8 +42,8 @@ fun SplashScreen(
     val alphaAnim = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        alphaAnim.animateTo(1f, animationSpec = tween(600))
-        delay(800)
+        alphaAnim.animateTo(1f, animationSpec = tween(650))
+        delay(1400)
         if (isSignedIn && hasProfiles) {
             onGoProfileSelector()
         } else {
@@ -60,16 +60,17 @@ fun SplashScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        val logoRes = if (BarrioColors.isDark) R.drawable.logo_barriogo else R.drawable.logo_barriogo_light
         Image(
-            painter = painterResource(R.drawable.logo_barriogo),
+            painter = painterResource(logoRes),
             contentDescription = "BarrioGo Logo",
             modifier = Modifier
-                .width(200.dp)
+                .width(220.dp)
                 .alpha(alphaAnim.value)
                 .testTag("splash_logo"),
             contentScale = ContentScale.Fit,
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
         Text(
             "Tu tienda al día. Sin dejar de atender.",
             color = BarrioColors.TextHint,

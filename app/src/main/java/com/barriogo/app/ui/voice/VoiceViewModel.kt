@@ -60,7 +60,7 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
 
     fun stopListening() { recognizer?.stop() }
 
-    private fun onTranscript(text: String) {
+    fun onTranscript(text: String) {
         _state.value = _state.value.copy(phase = VoicePhase.PROCESSING, transcript = text)
         viewModelScope.launch {
             // Una sola lectura del estado actual de clientes; no hace falta observarlos en vivo aquí.
@@ -92,8 +92,16 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
                 MovementEntity(
                     type = d.type.name,
                     amount = d.amount,
-                    title = if (d.type == MovementType.VENTA) (if (d.items.isEmpty()) "Venta" else d.itemText) else "Fiado",
-                    detail = if (d.type == MovementType.VENTA) "Por voz" else d.itemText,
+                    title = when (d.type) {
+                        MovementType.VENTA -> if (d.items.isEmpty()) "Venta" else d.itemText
+                        MovementType.GASTO -> if (d.items.isEmpty()) "Gasto" else d.itemText
+                        else -> "Fiado"
+                    },
+                    detail = when (d.type) {
+                        MovementType.VENTA -> "Por voz"
+                        MovementType.GASTO -> "Gasto por voz"
+                        else -> d.itemText
+                    },
                     quantity = d.quantity,
                     payMethod = d.payMethod.name,
                     clientId = clientId,

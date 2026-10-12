@@ -97,6 +97,21 @@ fun HomeScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.barriogo.app.BarrioGoApp
+                    IconButton(
+                        onClick = {
+                            val curr = app.container.store.darkTheme.value
+                            app.container.store.setDark(!curr)
+                        },
+                        modifier = Modifier.testTag("toggle_theme_home")
+                    ) {
+                        Icon(
+                            if (BarrioColors.isDark) Icons.Filled.WbSunny else Icons.Filled.DarkMode,
+                            contentDescription = "Cambiar tema claro/oscuro",
+                            tint = BarrioColors.Yellow,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                     IconButton(
                         onClick = { vm.toggleHide() },
                         modifier = Modifier.testTag("toggle_amounts_visibility")

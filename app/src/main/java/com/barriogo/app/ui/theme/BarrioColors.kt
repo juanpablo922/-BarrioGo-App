@@ -55,7 +55,7 @@ val LightBarrioPalette = BarrioColorPalette(
     isDark = false,
 )
 
-val LocalBarrioColors = staticCompositionLocalOf { DarkBarrioPalette }
+val LocalBarrioColors = androidx.compose.runtime.compositionLocalOf { DarkBarrioPalette }
 
 /** Colores tomados del Figma "Proyecto" con soporte dinámico para Modo Oscuro y Modo Claro. */
 object BarrioColors {

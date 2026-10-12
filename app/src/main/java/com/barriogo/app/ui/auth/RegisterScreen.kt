@@ -64,58 +64,69 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
             .imePadding()
             .testTag("register_screen")
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-        ) {
-            Spacer(Modifier.height(16.dp))
-
-            // Top Bar: Back arrow + Title
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        Column(Modifier.fillMaxSize()) {
+            // FIXED HEADER: Barra superior y Stepper siempre visibles
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(BarrioColors.Background)
+                    .padding(horizontal = 24.dp)
             ) {
-                IconButton(
-                    onClick = {
-                        if (s.step > 0) vm.prevStep() else onGoLogin()
-                    },
-                    modifier = Modifier.testTag("register_back_arrow")
+                Spacer(Modifier.height(16.dp))
+
+                // Top Bar: Back arrow + Title
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Atrás",
-                        tint = BarrioColors.Yellow,
-                        modifier = Modifier.size(24.dp)
+                    IconButton(
+                        onClick = {
+                            if (s.step > 0) vm.prevStep() else onGoLogin()
+                        },
+                        modifier = Modifier.testTag("register_back_arrow")
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Atrás",
+                            tint = BarrioColors.Yellow,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Registro de Negocio",
+                        color = BarrioColors.Yellow,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag("register_header_title")
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Registro de Negocio",
-                    color = BarrioColors.Yellow,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.testTag("register_header_title")
-                )
+
+                Spacer(Modifier.height(18.dp))
+
+                // Step Indicator: 1 - 2 - 3 (queda fijo arriba)
+                RegisterStepIndicator(currentStep = s.step)
+
+                Spacer(Modifier.height(20.dp))
             }
 
-            Spacer(Modifier.height(18.dp))
-
-            // Step Indicator: 1 - 2 - 3
-            RegisterStepIndicator(currentStep = s.step)
-
-            Spacer(Modifier.height(28.dp))
-
-            // Step 1: Datos del propietario
-            if (s.step == 0) {
-                Text(
-                    "Datos del propietario",
-                    color = BarrioColors.TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("step_0_title")
-                )
+            // CONTENIDO DESPLAZABLE: Formulario de datos con scroll independiente
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+            ) {
+                // Step 1: Datos del propietario
+                if (s.step == 0) {
+                    Text(
+                        "Datos del propietario",
+                        color = BarrioColors.TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.testTag("step_0_title")
+                    )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Cuéntanos un poco sobre ti y tu negocio",
@@ -415,6 +426,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
 
             Spacer(Modifier.height(32.dp))
         }
+    }
 
         // Dialog for "Otros" category
         if (showOtherDialog) {

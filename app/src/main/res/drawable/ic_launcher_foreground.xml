@@ -1,14 +1,8 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Toldo de la tienda -->
-    <path android:fillColor="#F2C849"
-        android:pathData="M30,36 L78,36 L84,50 L24,50 Z" />
-    <!-- Cuerpo -->
-    <path android:fillColor="#F2C849"
-        android:pathData="M32,52 L76,52 L76,78 L32,78 Z" />
-    <path android:fillColor="#164030"
-        android:pathData="M40,58 L52,58 L52,78 L40,78 Z" />
-    <path android:fillColor="#164030"
-        android:pathData="M58,58 L70,58 L70,68 L58,68 Z" />
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="72dp"
+        android:height="72dp"
+        android:drawable="@drawable/ic_launcher_foreground_logo"
+        android:gravity="center" />
+</layer-list>

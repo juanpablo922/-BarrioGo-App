@@ -81,17 +81,15 @@ fun BarrioGoNavGraph() {
             NavHost(navController = nav, startDestination = Routes.SPLASH) {
 
                 composable(Routes.SPLASH) {
-                    val profiles by app.container.repo.profiles.collectAsState(initial = null)
-                    if (profiles != null) {
-                        SplashScreen(
-                            isRegistered = app.container.store.registered,
-                            isSignedIn = app.container.store.signedIn,
-                            hasProfiles = profiles!!.isNotEmpty(),
-                            onGoRegister = { nav.navigate(Routes.REGISTER) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                            onGoLogin = { nav.navigate(Routes.LOGIN) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                            onGoProfileSelector = { nav.navigate(Routes.PROFILE_SELECTOR) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                        )
-                    }
+                    val profiles by app.container.repo.profiles.collectAsState(initial = emptyList())
+                    SplashScreen(
+                        isRegistered = app.container.store.registered,
+                        isSignedIn = app.container.store.signedIn,
+                        hasProfiles = profiles.isNotEmpty(),
+                        onGoRegister = { nav.navigate(Routes.REGISTER) { popUpTo(Routes.SPLASH) { inclusive = true } } },
+                        onGoLogin = { nav.navigate(Routes.LOGIN) { popUpTo(Routes.SPLASH) { inclusive = true } } },
+                        onGoProfileSelector = { nav.navigate(Routes.PROFILE_SELECTOR) { popUpTo(Routes.SPLASH) { inclusive = true } } },
+                    )
                 }
 
                 composable(Routes.LOGIN) {

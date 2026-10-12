@@ -100,11 +100,43 @@ object InvoiceAgent {
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
 
         var total = 0L
-        for (l in lines) {
+        val countKeywords = Regex("item|articul|cant|prod|unid|pieza|paquete", RegexOption.IGNORE_CASE)
+        val totalKeywords = Regex("total|pagar|neto|importe|valor\\s+a|gran\\s+total", RegexOption.IGNORE_CASE)
+
+        for (i in lines.indices) {
+            val l = lines[i]
             val ln = Txt.stripAccents(l.lowercase())
-            if (ln.contains("total") && !ln.contains("subtotal")) {
-                val a = amounts(l)
-                if (a.isNotEmpty()) total = maxOf(total, a.max())
+
+            // Descartar líneas de conteo como "TOTAL ITEMS: 1" o "TOTAL ARTICULOS: 1"
+            if (countKeywords.containsMatchIn(ln)) continue
+
+            if (totalKeywords.containsMatchIn(ln) && !ln.contains("subtotal")) {
+                // 1. Buscar montos en la misma línea
+                val a = amounts(l).filter { it >= 100 }
+                if (a.isNotEmpty()) {
+                    total = maxOf(total, a.max())
+                } else if (i + 1 < lines.size) {
+                    // 2. Si la palabra "TOTAL" está sola, revisar la línea inmediatamente siguiente
+                    val nextL = lines[i + 1]
+                    val nextLn = Txt.stripAccents(nextL.lowercase())
+                    if (!countKeywords.containsMatchIn(nextLn)) {
+                        val nextA = amounts(nextL).filter { it >= 100 }
+                        if (nextA.isNotEmpty()) {
+                            total = maxOf(total, nextA.max())
+                        }
+                    }
+                }
+            }
+        }
+
+        // Si no se encontró total explícito con palabra clave, buscar el monto más alto en el documento >= 500
+        if (total == 0L) {
+            val allAmounts = lines.flatMap { l ->
+                val ln = Txt.stripAccents(l.lowercase())
+                if (countKeywords.containsMatchIn(ln)) emptyList() else amounts(l)
+            }.filter { it >= 500 }
+            if (allAmounts.isNotEmpty()) {
+                total = allAmounts.max()
             }
         }
 
