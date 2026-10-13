@@ -1,0 +1,15 @@
+<resources>
+    <!--
+        Android 12+ siempre muestra un splash del sistema mientras la app arranca. Lo dejamos del
+        mismo verde del fondo y sin ícono para que el primer splash visible sea el L1 del Figma
+        (SplashScreen en Compose), sin un logo distinto que aparezca y desaparezca.
+    -->
+    <style name="Theme.BarrioGo" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/bg_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

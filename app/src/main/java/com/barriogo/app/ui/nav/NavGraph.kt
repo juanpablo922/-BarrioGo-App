@@ -1,6 +1,7 @@
 package com.barriogo.app.ui.nav
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -20,13 +21,6 @@ import androidx.navigation.navArgument
 import androidx.navigation.NavType
 import com.barriogo.app.BarrioGoApp
 import com.barriogo.app.domain.MovementType
-import com.barriogo.app.ui.auth.CreatePinScreen
-import com.barriogo.app.ui.auth.CreateProfileScreen
-import com.barriogo.app.ui.auth.LoginScreen
-import com.barriogo.app.ui.auth.PinLoginScreen
-import com.barriogo.app.ui.auth.ProfileSelectorScreen
-import com.barriogo.app.ui.auth.RegisterScreen
-import com.barriogo.app.ui.auth.SplashScreen
 import com.barriogo.app.ui.cash.CashScreen
 import com.barriogo.app.ui.cash.OpenCashScreen
 import com.barriogo.app.ui.components.BarrioBottomBar
@@ -77,60 +71,10 @@ fun BarrioGoNavGraph() {
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             NavHost(navController = nav, startDestination = Routes.SPLASH) {
 
-                composable(Routes.SPLASH) {
-                    val profiles by app.container.repo.profiles.collectAsState(initial = null)
-                    if (profiles != null) {
-                        SplashScreen(
-                            isRegistered = app.container.store.registered,
-                            isSignedIn = app.container.store.signedIn,
-                            hasProfiles = profiles!!.isNotEmpty(),
-                            onGoRegister = { nav.navigate(Routes.REGISTER) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                            onGoLogin = { nav.navigate(Routes.LOGIN) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                            onGoProfileSelector = { nav.navigate(Routes.PROFILE_SELECTOR) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                        )
-                    }
-                }
-
-                composable(Routes.LOGIN) {
-                    LoginScreen(
-                        onLoggedIn = { nav.navigate(Routes.PROFILE_SELECTOR) { popUpTo(Routes.LOGIN) { inclusive = true } } },
-                        onGoRegister = { nav.navigate(Routes.REGISTER) },
-                    )
-                }
-                composable(Routes.REGISTER) {
-                    RegisterScreen(onFinished = { nav.navigate(Routes.CREATE_PIN) })
-                }
-                composable(Routes.CREATE_PIN) {
-                    val vm = com.barriogo.app.ui.barrioViewModel { com.barriogo.app.ui.auth.AuthViewModel(it) }
-                    CreatePinScreen(subtitle = "Lo usarás para entrar a la tienda cada día.") { pin ->
-                        vm.createAdminProfile(pin) {
-                            nav.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
-                        }
-                    }
-                }
-                composable(Routes.CREATE_PROFILE) {
-                    CreateProfileScreen(onDone = { nav.popBackStack() })
-                }
-                composable(Routes.PROFILE_SELECTOR) {
-                    ProfileSelectorScreen(
-                        onPick = { id -> nav.navigate(Routes.pinLogin(id)) },
-                        onCreateProfile = { nav.navigate(Routes.CREATE_PROFILE) },
-                    )
-                }
-                composable(
-                    Routes.PIN_LOGIN,
-                    arguments = listOf(navArgument("profileId") { type = NavType.LongType }),
-                ) { entry ->
-                    val id = entry.arguments?.getLong("profileId") ?: 0L
-                    PinLoginScreen(
-                        profileId = id,
-                        onSuccess = { nav.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                        onBack = { nav.popBackStack() },
-                    )
-                }
+                authGraph(nav, app)
 
                 composable(Routes.HOME) {
                     HomeScreen(
