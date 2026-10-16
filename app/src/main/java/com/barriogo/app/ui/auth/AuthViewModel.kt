@@ -7,11 +7,14 @@ import com.barriogo.app.data.Hasher
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.data.auth.DatosRegistro
 import com.barriogo.app.data.auth.Resultado
+import com.barriogo.app.data.perfiles.PerfilesRepository
 import com.barriogo.app.domain.BUSINESS_CATEGORIES
+import com.barriogo.app.domain.CuposPerfiles
 import com.barriogo.app.domain.Role
 import com.barriogo.app.domain.Validaciones
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -177,6 +180,10 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
         if (creatingProfile) return
         creatingProfile = true
         viewModelScope.launch {
+            CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.Crear(role))?.let {
+                creatingProfile = false
+                return@launch onError(it)
+            }
             val tienda = store.tiendaId
             val resultado = if (store.demo || tienda == null) {
                 Resultado.Ok(container.perfiles.crearLocal(name, role, clave))
@@ -203,6 +210,80 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
                 is Resultado.Error -> onError(resultado.mensaje)
             }
             creatingProfile = false
+        }
+    }
+
+    // ---- P2 · Editar y eliminar perfiles desde "¿Quién está atendiendo?" ----
+
+    private suspend fun cupos() = profiles.first().map {
+        CuposPerfiles.PerfilConRol(it.id, if (it.isAdmin) Role.ADMIN else Role.SELLER)
+    }
+
+    /** Administrador que entró con su clave hace menos de 10 minutos: puede manejar perfiles. */
+    fun adminVigente(): ProfileEntity? = container.adminVigente()
+
+    /** L4 con un administrador para abrir el manejo de perfiles. Sin internet. */
+    fun verificarAdmin(perfil: ProfileEntity, clave: String, onOk: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            if (perfil.isAdmin && PerfilesRepository.claveCorrecta(perfil, clave)) {
+                container.recordarAdmin(perfil)
+                onOk()
+            } else {
+                onError("Clave incorrecta. Intenta de nuevo.")
+            }
+        }
+    }
+
+    private var guardandoPerfil = false
+
+    /** Problema con el nombre del perfil, o null si sirve. Mismo límite que crearPerfil (60). */
+    fun problemaNombre(nombre: String, todos: List<ProfileEntity>, perfilId: Long? = null): String? = when {
+        !Validaciones.textoValido(nombre, 60) -> "Escribe un nombre de máximo 60 letras"
+        todos.any { it.id != perfilId && it.name.trim().equals(nombre.trim(), ignoreCase = true) } ->
+            "Ya hay un perfil llamado ${nombre.trim()}. Usa otro nombre."
+        else -> null
+    }
+
+    /** P2 · Cambia nombre y rol. Lo hace el administrador vigente; necesita internet en una cuenta real. */
+    fun actualizarPerfil(perfil: ProfileEntity, nombre: String, rol: Role, onDone: () -> Unit, onError: (String) -> Unit) {
+        if (guardandoPerfil) return
+        val admin = container.adminVigente() ?: return onError("Primero entra con la clave de un administrador.")
+        guardandoPerfil = true
+        viewModelScope.launch {
+            val todos = profiles.first()
+            val problema = problemaNombre(nombre, todos, perfil.id)
+                ?: CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.CambiarRol(perfil.id, rol))
+            val r = problema?.let { Resultado.Error(it) }
+                ?: container.perfiles.actualizar(store.tiendaId.takeUnless { store.demo }, perfil, nombre, rol, admin.remoteId)
+            when (r) {
+                is Resultado.Ok -> {
+                    // Un administrador que se pasa a vendedor ya no puede seguir manejando perfiles.
+                    if (perfil.id == admin.id && rol != Role.ADMIN) container.olvidarAdmin()
+                    onDone()
+                }
+                is Resultado.Error -> onError(r.mensaje)
+            }
+            guardandoPerfil = false
+        }
+    }
+
+    /** P2 · Elimina el perfil (nunca el último administrador). */
+    fun eliminarPerfil(perfil: ProfileEntity, onDone: () -> Unit, onError: (String) -> Unit) {
+        if (guardandoPerfil) return
+        val admin = container.adminVigente() ?: return onError("Primero entra con la clave de un administrador.")
+        guardandoPerfil = true
+        viewModelScope.launch {
+            val r = CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.Eliminar(perfil.id))?.let { Resultado.Error(it) }
+                ?: container.perfiles.eliminar(store.tiendaId.takeUnless { store.demo }, perfil, admin.remoteId)
+            when (r) {
+                is Resultado.Ok -> {
+                    if (perfil.id == admin.id) container.olvidarAdmin()
+                    if (container.activeProfileId.value == perfil.id) container.activeProfileId.value = null
+                    onDone()
+                }
+                is Resultado.Error -> onError(r.mensaje)
+            }
+            guardandoPerfil = false
         }
     }
 

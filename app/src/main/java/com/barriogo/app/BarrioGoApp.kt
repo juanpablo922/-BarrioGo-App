@@ -46,17 +46,25 @@ class AppContainer(context: Context) {
     var claveEnCurso: String? = null
 
     /**
-     * Último administrador que entró con su clave en este celular (id en Firestore y hora).
-     * Durante 10 minutos puede crear perfiles aunque se vuelva al selector.
+     * Último administrador que entró con su clave en este celular y la hora.
+     * Durante 10 minutos puede crear, editar y eliminar perfiles aunque se vuelva al selector.
      */
-    private var adminVerificado: Pair<String, Long>? = null
+    private var adminVerificado: Pair<ProfileEntity, Long>? = null
 
-    fun recordarAdmin(remoteId: String) {
-        adminVerificado = remoteId to System.currentTimeMillis()
+    fun recordarAdmin(perfil: ProfileEntity) {
+        if (perfil.isAdmin) adminVerificado = perfil to System.currentTimeMillis()
     }
 
-    fun adminParaCrearPerfiles(): String? =
+    fun olvidarAdmin() {
+        adminVerificado = null
+    }
+
+    /** Administrador verificado hace menos de 10 minutos, o null. */
+    fun adminVigente(): ProfileEntity? =
         adminVerificado?.takeIf { System.currentTimeMillis() - it.second < 10 * 60 * 1000 }?.first
+
+    /** Id en Firestore del administrador vigente (lo que piden las funciones como actorPerfilId). */
+    fun adminParaCrearPerfiles(): String? = adminVigente()?.remoteId
 
     /** Empieza a sincronizar los perfiles de la tienda (cuentas reales; la demo es solo local). */
     fun sincronizarPerfiles() {
@@ -91,6 +99,7 @@ class AppContainer(context: Context) {
     /** "Salir de la tienda": cierra la sesión de Firebase y la de la demo. */
     fun signOutOfStore() {
         activeProfileId.value = null
+        olvidarAdmin()
         store.signedIn = false
         perfiles.detener()
         authRepo.salir()

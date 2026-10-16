@@ -2,6 +2,8 @@ package com.barriogo.app.ui.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.barriogo.app.data.auth.CREDENCIALES_INCORRECTAS
+import com.barriogo.app.data.auth.SIN_CONEXION
 import com.barriogo.app.domain.Validaciones
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,10 @@ data class LoginUiState(
     val passwordVisible: Boolean = false,
     val emailError: String? = null,
     val passwordError: String? = null,
+    /** Firebase rechazó el correo/contraseña: resalta el campo de contraseña (Figma: Login=Credenciales). */
+    val credentialsError: Boolean = false,
+    /** Falló por red: aviso arriba del formulario y botón "Reintentar" (Figma: Login=Sin conexión). */
+    val noConnection: Boolean = false,
     val isLoading: Boolean = false,
     val loginSuccess: Boolean = false
 )
@@ -32,10 +38,10 @@ class LoginViewModel(
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
 
     fun onEmailChange(value: String) =
-        _state.update { it.copy(email = value.trim(), emailError = null) }
+        _state.update { it.copy(email = value.trim(), emailError = null, credentialsError = false, passwordError = null) }
 
     fun onPasswordChange(value: String) =
-        _state.update { it.copy(password = value, passwordError = null) }
+        _state.update { it.copy(password = value, passwordError = null, credentialsError = false) }
 
     fun togglePasswordVisibility() =
         _state.update { it.copy(passwordVisible = !it.passwordVisible) }
@@ -48,23 +54,26 @@ class LoginViewModel(
         if (!emailOk || !passOk) {
             _state.update {
                 it.copy(
-                    emailError = if (emailOk) null else "Escribe un correo válido",
-                    passwordError = if (passOk) null else "Escribe tu contraseña"
+                    emailError = if (emailOk) null else "Ingresa un correo electrónico válido",
+                    passwordError = if (passOk) null else "Ingresa tu contraseña",
+                    credentialsError = false
                 )
             }
             return
         }
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            _state.update { it.copy(isLoading = true, noConnection = false, credentialsError = false) }
             val error = authenticate(s.email, s.password)
             _state.update {
                 it.copy(
                     isLoading = false,
                     loginSuccess = error == null,
+                    noConnection = error == SIN_CONEXION,
                     // Firebase no dice si el correo existe (protección contra la enumeración): un solo mensaje.
+                    credentialsError = error == CREDENCIALES_INCORRECTAS,
                     passwordError = when (error) {
-                        null -> null
-                        "Correo o contraseña incorrectos." -> "Correo o contraseña incorrectos. Si no tienes cuenta, regístrate gratis abajo."
+                        null, SIN_CONEXION -> null
+                        CREDENCIALES_INCORRECTAS -> "Correo o contraseña incorrectos"
                         else -> error
                     }
                 )

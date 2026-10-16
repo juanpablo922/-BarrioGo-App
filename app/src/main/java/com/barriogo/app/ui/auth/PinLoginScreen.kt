@@ -51,7 +51,7 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
 
     fun entrar() {
         container.activeProfileId.value = profileId
-        profile?.takeIf { it.isAdmin }?.remoteId?.let(container::recordarAdmin)
+        profile?.let(container::recordarAdmin)
         onSuccess()
     }
 

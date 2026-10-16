@@ -2,6 +2,7 @@ package com.barriogo.app.ui.login
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,7 +26,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -128,6 +132,11 @@ fun LoginContent(
 
             Spacer(Modifier.height(40.dp))
 
+            if (state.noConnection) {
+                NoConnectionNotice(Modifier.testTag("login_no_connection"))
+                Spacer(Modifier.height(16.dp))
+            }
+
             // Correo
             Text(
                 "Correo electrónico",
@@ -148,7 +157,7 @@ fun LoginContent(
                 modifier = Modifier.testTag("email_input")
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
             // Contraseña
             Row(
@@ -192,6 +201,7 @@ fun LoginContent(
                 imeAction = ImeAction.Done,
                 onDone = { focus.clearFocus(); onLogin() },
                 error = state.passwordError,
+                highlightBorder = state.credentialsError,
                 modifier = Modifier.testTag("password_input")
             )
 
@@ -221,7 +231,11 @@ fun LoginContent(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Ingresar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (state.noConnection) "Reintentar" else "Ingresar",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
                 }
@@ -287,37 +301,82 @@ private fun BarrioTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     onNext: () -> Unit = {},
     onDone: () -> Unit = {},
-    error: String? = null
+    error: String? = null,
+    highlightBorder: Boolean = false
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+    val shape = RoundedCornerShape(14.dp)
+    val warning = loginWarningColor()
+    // Figma L2: el mensaje va 8dp debajo del campo y su espacio está siempre reservado,
+    // así el formulario no salta. El borde solo cambia con credenciales incorrectas.
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .then(if (highlightBorder) Modifier.border(2.dp, warning, shape) else Modifier),
+            placeholder = { Text(placeholder, color = BarrioColors.TextHint, fontSize = 15.sp) },
+            leadingIcon = leadingIcon,
+            trailingIcon = trailingIcon,
+            singleLine = true,
+            visualTransformation = visualTransformation,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+            keyboardActions = KeyboardActions(onNext = { onNext() }, onDone = { onDone() }),
+            shape = shape,
+            textStyle = TextStyle(color = BarrioColors.TextPrimary, fontSize = 15.sp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = BarrioColors.Surface,
+                unfocusedContainerColor = BarrioColors.Surface,
+                focusedBorderColor = if (highlightBorder) warning else BarrioColors.Yellow,
+                unfocusedBorderColor = if (highlightBorder) warning else BarrioColors.YellowStroke,
+                cursorColor = BarrioColors.Yellow,
+                focusedTextColor = BarrioColors.TextPrimary,
+                unfocusedTextColor = BarrioColors.TextPrimary
+            )
+        )
+        Text(
+            error.orEmpty(),
+            color = warning,
+            fontSize = 14.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(if (error != null) 1f else 0f)
+        )
+    }
+}
+
+/** Ámbar de las alertas del Figma (#F2B544); en tema claro se usa el rojo de error por contraste. */
+@Composable
+private fun loginWarningColor(): Color =
+    if (BarrioColors.isDark) Color(0xFFF2B544) else BarrioColors.Error
+
+/** Figma L2 · Aviso · Sin conexión. */
+@Composable
+private fun NoConnectionNotice(modifier: Modifier = Modifier) {
+    val warning = loginWarningColor()
+    val shape = RoundedCornerShape(12.dp)
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp),
-        placeholder = { Text(placeholder, color = BarrioColors.TextHint, fontSize = 15.sp) },
-        leadingIcon = leadingIcon,
-        trailingIcon = trailingIcon,
-        singleLine = true,
-        isError = error != null,
-        visualTransformation = visualTransformation,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        keyboardActions = KeyboardActions(onNext = { onNext() }, onDone = { onDone() }),
-        shape = RoundedCornerShape(14.dp),
-        textStyle = TextStyle(color = BarrioColors.TextPrimary, fontSize = 15.sp),
-        supportingText = error?.let { { Text(it, color = BarrioColors.Error, fontSize = 12.sp) } },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = BarrioColors.Surface,
-            unfocusedContainerColor = BarrioColors.Surface,
-            errorContainerColor = BarrioColors.Surface,
-            focusedBorderColor = BarrioColors.Yellow,
-            unfocusedBorderColor = BarrioColors.YellowStroke,
-            errorBorderColor = BarrioColors.Error,
-            cursorColor = BarrioColors.Yellow,
-            focusedTextColor = BarrioColors.TextPrimary,
-            unfocusedTextColor = BarrioColors.TextPrimary
+            .clip(shape)
+            .background(if (BarrioColors.isDark) Color(0xFF22593F) else BarrioColors.Surface)
+            .border(1.dp, warning, shape)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            "Sin conexión a internet",
+            color = warning,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
         )
-    )
+        Text(
+            "Necesitas conexión solo para este primer ingreso. Revisa tu red e inténtalo de nuevo.",
+            color = if (BarrioColors.isDark) Color(0xFFD9E0DB) else BarrioColors.TextHint,
+            fontSize = 14.sp
+        )
+    }
 }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 800)

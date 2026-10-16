@@ -122,6 +122,50 @@ class PerfilesRepository(
     }
 
     /**
+     * P2 · Cambia nombre y/o rol con la función actualizarPerfil ([actor] = id en Firestore del
+     * administrador que lo hace). Solo se envía lo que cambió. Un perfil sin [ProfileEntity.remoteId]
+     * (cuenta demo) cambia solo en el celular.
+     */
+    suspend fun actualizar(tiendaId: String?, perfil: ProfileEntity, nombre: String, rol: Role, actor: String?): Resultado<Unit> =
+        conServidor {
+            val nombreNuevo = nombre.trim()
+            val remoteId = perfil.remoteId
+            if (remoteId != null && tiendaId != null) {
+                val datos = buildMap<String, Any> {
+                    put("tiendaId", tiendaId)
+                    put("perfilId", remoteId)
+                    put("actorPerfilId", actor ?: return@conServidor SIN_ADMIN)
+                    if (nombreNuevo != perfil.name) put("nombre", nombreNuevo)
+                    if (rol.name != perfil.role) put("rol", if (rol == Role.ADMIN) ROL_ADMIN else ROL_VENDEDOR)
+                }
+                if (datos.size > 3) funciones.getHttpsCallable("actualizarPerfil").call(datos).await()
+            }
+            room.profileDao().update(perfil.copy(name = nombreNuevo, role = rol.name))
+            Resultado.Ok(Unit)
+        }
+
+    /** P2 · Borrado lógico con la función eliminarPerfil: deja de entrar, sus ventas siguen con su nombre. */
+    suspend fun eliminar(tiendaId: String?, perfil: ProfileEntity, actor: String?): Resultado<Unit> = conServidor {
+        val remoteId = perfil.remoteId
+        if (remoteId != null && tiendaId != null) {
+            val datos = mapOf("tiendaId" to tiendaId, "perfilId" to remoteId, "actorPerfilId" to (actor ?: return@conServidor SIN_ADMIN))
+            funciones.getHttpsCallable("eliminarPerfil").call(datos).await()
+        }
+        room.profileDao().delete(perfil.id)
+        Resultado.Ok(Unit)
+    }
+
+    private suspend fun <T> conServidor(bloque: suspend () -> Resultado<T>): Resultado<T> = try {
+        bloque()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: FirebaseFunctionsException) {
+        Resultado.Error(mensajeDeError(e), e.code.name.lowercase().replace('_', '-'))
+    } catch (e: Exception) {
+        Resultado.Error(mensajeDeError(e))
+    }
+
+    /**
      * Huella activada o no para este perfil en este celular. Se guarda en Room (lo usa la pantalla
      * del PIN) y, si es un perfil de Firestore, en tiendas/{t}/dispositivos/{celular}/accesos/{perfil}.
      * Funciona sin internet: Firestore sincroniza cuando vuelve la señal.
@@ -156,6 +200,7 @@ class PerfilesRepository(
         private const val TAG = "PerfilesRepository"
         private const val ROL_ADMIN = "administrador"
         private const val ROL_VENDEDOR = "vendedor"
+        private val SIN_ADMIN = Resultado.Error("Primero entra con la clave de un administrador.", "permission-denied")
 
         /**
          * L4 · ¿La clave corresponde al perfil? Sin internet.

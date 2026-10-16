@@ -15,24 +15,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.barriogo.app.domain.CuposPerfiles
 import com.barriogo.app.domain.Role
 import com.barriogo.app.ui.theme.BarrioColors
 
 /**
  * P1 · Crea tu perfil (Screen 7 del prototipo Figma).
+ * [adminLleno] = la tienda ya tiene el máximo de administradores (CuposPerfiles): solo queda Vendedor.
  */
 @Composable
 fun CreateProfileScreen(
+    adminLleno: Boolean = false,
     onDone: (name: String, role: Role) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var selectedRole by remember { mutableStateOf<Role?>(Role.ADMIN) }
+    LaunchedEffect(adminLleno) { if (adminLleno && selectedRole == Role.ADMIN) selectedRole = Role.SELLER }
     val isValid = name.isNotBlank() && selectedRole != null
 
     Box(
@@ -100,9 +105,11 @@ fun CreateProfileScreen(
                 // Card Administrador
                 RoleOptionCard(
                     title = "Administrador",
-                    description = "Ve las ventas, maneja precios y crea perfiles",
+                    description = if (adminLleno) "Ya hay ${CuposPerfiles.MAXIMO_ADMINISTRADORES} administradores, el máximo"
+                    else "Ve las ventas, maneja precios y crea perfiles",
                     icon = Icons.Outlined.Security,
                     isSelected = selectedRole == Role.ADMIN,
+                    enabled = !adminLleno,
                     onClick = { selectedRole = Role.ADMIN },
                     tag = "role_admin_card"
                 )
@@ -161,25 +168,28 @@ fun CreateProfileScreen(
     }
 }
 
+/** Tarjeta de rol de P1 y de "Editar perfil". Deshabilitada cuando el cupo no deja elegirla. */
 @Composable
-private fun RoleOptionCard(
+internal fun RoleOptionCard(
     title: String,
     description: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isSelected: Boolean,
     onClick: () -> Unit,
-    tag: String
+    tag: String,
+    enabled: Boolean = true
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.45f)
             .clip(RoundedCornerShape(16.dp))
             .background(BarrioColors.CardBg)
             .then(
                 if (isSelected) Modifier.border(2.dp, BarrioColors.Yellow, RoundedCornerShape(16.dp))
                 else Modifier.border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(16.dp))
             )
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(16.dp)
             .testTag(tag)
     ) {

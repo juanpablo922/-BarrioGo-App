@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,12 +20,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -33,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.barriogo.app.domain.Validaciones
 import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.theme.BarrioColors
+import kotlinx.coroutines.launch
 
 data class CategoryItem(val name: String, val icon: ImageVector)
 
@@ -56,6 +65,11 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
     var otherCustomCategory by remember { mutableStateOf("") }
     var showSuccessModal by remember { mutableStateOf(false) }
     var attemptedSubmit by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+
+    // Cada paso empieza arriba.
+    LaunchedEffect(s.step) { scrollState.scrollTo(0) }
 
     Box(
         Modifier
@@ -116,7 +130,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 24.dp)
             ) {
                 // Step 1: Datos del propietario
@@ -185,29 +199,6 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     tag = "phone_input"
                 )
 
-                Spacer(Modifier.height(24.dp))
-
-                Button(
-                    onClick = {
-                        attemptedSubmit = true
-                        if (s.problem == null) {
-                            attemptedSubmit = false
-                            vm.nextStep()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("continue_step_0_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BarrioColors.Yellow,
-                        contentColor = BarrioColors.OnYellow
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
-                ) {
-                    Text("Continuar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                }
             }
 
             // Step 2: Selecciona tu categoría
@@ -282,30 +273,6 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                 )
 
                 RegisterError(s.error)
-                Spacer(Modifier.height(24.dp))
-
-                Button(
-                    onClick = {
-                        if (s.category.isNotBlank()) {
-                            vm.nextStep()
-                        }
-                    },
-                    enabled = s.category.isNotBlank(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("continue_step_1_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BarrioColors.Yellow,
-                        contentColor = BarrioColors.OnYellow,
-                        disabledContainerColor = BarrioColors.Yellow.copy(alpha = 0.5f),
-                        disabledContentColor = BarrioColors.OnYellow
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
-                ) {
-                    Text("Continuar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                }
             }
 
             // Step 3: Crea tu contraseña
@@ -399,100 +366,83 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                 PasswordRequirementRow("Una letra mayúscula", hasUpper)
                 PasswordRequirementRow("Un número o carácter especial", hasNumOrSpecial)
 
-                Spacer(Modifier.height(28.dp))
-
+                Spacer(Modifier.height(16.dp))
                 RegisterError(s.error)
-                if (s.error != null) Spacer(Modifier.height(12.dp))
-
-                Button(
-                    onClick = {
-                        vm.finishRegistration { showSuccessModal = true }
-                    },
-                    enabled = !s.loading && s.password.isNotBlank() && s.password == s.confirmPassword,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("finish_register_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BarrioColors.Yellow,
-                        contentColor = BarrioColors.OnYellow,
-                        disabledContainerColor = BarrioColors.Yellow.copy(alpha = 0.5f),
-                        disabledContentColor = BarrioColors.OnYellow
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
-                ) {
-                    Text(
-                        if (s.loading) "Creando tu tienda…" else "Finalizar registro",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(24.dp))
         }
-    }
 
-        // Dialog for "Otros" category
-        if (showOtherDialog) {
-            AlertDialog(
-                onDismissRequest = { showOtherDialog = false },
-                containerColor = BarrioColors.Background,
-                shape = RoundedCornerShape(20.dp),
-                title = {
-                    Text(
-                        "¿De qué es tu negocio?",
-                        color = BarrioColors.TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Column {
-                        Text(
-                            "Escríbelo con tus palabras. Así la app se adapta a lo que vendes.",
-                            color = BarrioColors.TextHint,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        OutlinedTextField(
-                            value = otherCustomCategory,
-                            onValueChange = { otherCustomCategory = it },
-                            placeholder = { Text("Ej. Floristería, Papelería, Peluquería", color = BarrioColors.TextHint, fontSize = 14.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("custom_category_input"),
-                            shape = RoundedCornerShape(12.dp),
-                            textStyle = TextStyle(color = BarrioColors.TextPrimary, fontSize = 14.sp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = BarrioColors.Surface,
-                                unfocusedContainerColor = BarrioColors.Surface,
-                                focusedBorderColor = BarrioColors.Yellow,
-                                unfocusedBorderColor = BarrioColors.YellowStroke,
-                                cursorColor = BarrioColors.Yellow
-                            )
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
+            // PIE FIJO: el botón del paso siempre se ve, aunque las validaciones alarguen el formulario
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(BarrioColors.Background)
+                    .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 16.dp)
+            ) {
+                val colores = ButtonDefaults.buttonColors(
+                    containerColor = BarrioColors.Yellow,
+                    contentColor = BarrioColors.OnYellow,
+                    disabledContainerColor = BarrioColors.Yellow.copy(alpha = 0.5f),
+                    disabledContentColor = BarrioColors.OnYellow
+                )
+                val botonModifier = Modifier.fillMaxWidth().height(52.dp)
+                when (s.step) {
+                    0 -> Button(
                         onClick = {
-                            if (otherCustomCategory.isNotBlank()) {
-                                vm.updateRegister { it.copy(category = otherCustomCategory.trim()) }
+                            attemptedSubmit = true
+                            if (s.problem == null) {
+                                attemptedSubmit = false
+                                vm.nextStep()
+                            } else {
+                                // Lleva el formulario arriba para que se vea el primer error.
+                                scope.launch { scrollState.animateScrollTo(0) }
                             }
-                            showOtherDialog = false
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = BarrioColors.Yellow, contentColor = BarrioColors.OnYellow),
-                        shape = RoundedCornerShape(10.dp)
+                        modifier = botonModifier.testTag("continue_step_0_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = colores,
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                     ) {
-                        Text("Guardar", fontWeight = FontWeight.Bold)
+                        Text("Continuar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showOtherDialog = false }) {
-                        Text("Cancelar", color = BarrioColors.TextHint)
+
+                    1 -> Button(
+                        onClick = { if (s.category.isNotBlank()) vm.nextStep() },
+                        enabled = s.category.isNotBlank(),
+                        modifier = botonModifier.testTag("continue_step_1_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = colores,
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
+                    ) {
+                        Text("Continuar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    else -> Button(
+                        onClick = { vm.finishRegistration { showSuccessModal = true } },
+                        enabled = !s.loading && s.password.isNotBlank() && s.password == s.confirmPassword,
+                        modifier = botonModifier.testTag("finish_register_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = colores,
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
+                    ) {
+                        Text(
+                            if (s.loading) "Creando tu tienda…" else "Finalizar registro",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
+            }
+    }
+
+        // Hoja inferior "Otros" (Figma: Hoja · Otro negocio)
+        if (showOtherDialog) {
+            OtherCategorySheet(
+                value = otherCustomCategory,
+                onValueChange = { otherCustomCategory = it },
+                onSave = { vm.updateRegister { it.copy(category = otherCustomCategory.trim()) } },
+                onDismiss = { showOtherDialog = false }
             )
         }
 
@@ -681,6 +631,165 @@ private fun CategoryCard(
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+/**
+ * Hoja inferior para escribir una categoría libre cuando se elige "Otros".
+ * Estados Figma: Otros escribir / Otros error / Otros lleno (R2 Categoría).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OtherCategorySheet(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isDark = BarrioColors.isDark
+    val sheetBg = if (isDark) Color(0xFF22593F) else BarrioColors.Surface
+    val subtitleColor = if (isDark) Color(0xFFD9E0DB) else BarrioColors.TextHint
+    val placeholderColor = if (isDark) Color(0xFFA6B8AD) else BarrioColors.TextHint
+    val gold = Color(0xFFCCAC6D)
+    val warning = Color(0xFFF2B544)
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
+    var touched by remember { mutableStateOf(false) }
+    val isBlank = value.isBlank()
+    val showError = touched && isBlank
+
+    fun close(afterHide: () -> Unit = {}) {
+        scope.launch { sheetState.hide() }.invokeOnCompletion {
+            afterHide()
+            onDismiss()
+        }
+    }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = sheetBg,
+        scrimColor = Color.Black.copy(alpha = 0.55f),
+        dragHandle = {
+            Box(
+                Modifier
+                    .padding(top = 10.dp)
+                    .size(width = 40.dp, height = 4.dp)
+                    .background(gold, RoundedCornerShape(2.dp))
+            )
+        },
+        modifier = Modifier.testTag("custom_category_sheet")
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "¿De qué es tu negocio?",
+                color = BarrioColors.TextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Escríbelo con tus palabras. Así la app se adapta a lo que vendes.",
+                color = subtitleColor,
+                fontSize = 14.sp
+            )
+
+            Column(
+                Modifier.fillMaxWidth().padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = {
+                        touched = true
+                        onValueChange(it)
+                    },
+                    singleLine = true,
+                    textStyle = TextStyle(color = BarrioColors.TextPrimary, fontSize = 16.sp),
+                    cursorBrush = SolidColor(BarrioColors.Yellow),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (!isBlank) close(onSave) else touched = true
+                    }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .testTag("custom_category_input"),
+                    decorationBox = { inner ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(BarrioColors.Background)
+                                .border(2.dp, if (showError) warning else BarrioColors.Yellow, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (value.isEmpty()) {
+                                Text("Ej. Floristería, Papelería, Peluquería", color = placeholderColor, fontSize = 16.sp)
+                            }
+                            inner()
+                        }
+                    }
+                )
+                // Reserva el espacio del error para que la hoja no salte
+                Text(
+                    "Escribe de qué es tu negocio",
+                    color = warning,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(if (showError) 1f else 0f)
+                        .testTag("custom_category_error")
+                )
+            }
+
+            Column(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { close(onSave) },
+                    enabled = !isBlank,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("custom_category_save"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BarrioColors.Yellow,
+                        contentColor = BarrioColors.OnYellow,
+                        disabledContainerColor = gold.copy(alpha = 0.45f),
+                        disabledContentColor = BarrioColors.OnYellow.copy(alpha = 0.6f)
+                    )
+                ) {
+                    Text("Guardar", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+                TextButton(
+                    onClick = { close() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("custom_category_cancel"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Cancelar", color = gold, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

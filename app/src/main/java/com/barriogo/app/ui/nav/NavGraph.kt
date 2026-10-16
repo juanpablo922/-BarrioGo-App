@@ -149,7 +149,9 @@ fun BarrioGoNavGraph() {
                         // Sin clave no hay perfil: primero R5.
                         if (!vm.hayClaveEnCurso) nav.navigate(Routes.CREATE_PIN) { popUpTo(Routes.CREATE_PROFILE) { inclusive = true } }
                     }
-                    CreateProfileScreen { name, role ->
+                    val perfiles by vm.profiles.collectAsState(initial = emptyList())
+                    val adminLleno = perfiles.count { it.isAdmin } >= com.barriogo.app.domain.CuposPerfiles.MAXIMO_ADMINISTRADORES
+                    CreateProfileScreen(adminLleno = adminLleno) { name, role ->
                         vm.crearPerfil(
                             name,
                             role,

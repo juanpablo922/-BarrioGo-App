@@ -195,14 +195,15 @@ class AuthRepository(
     }
 }
 
-private const val SIN_CONEXION = "Sin conexión. Revisa tu internet e intenta de nuevo."
+const val SIN_CONEXION = "Sin conexión. Revisa tu internet e intenta de nuevo."
+const val CREDENCIALES_INCORRECTAS = "Correo o contraseña incorrectos."
 
 /** Errores de Firebase → mensajes en el tono de la app. El orden importa: hay subclases. */
 fun mensajeDeError(e: Exception): String = when (e) {
     is FirebaseAuthUserCollisionException -> "Ya hay una cuenta con este correo. Ingresa o recupera tu contraseña."
     is FirebaseAuthWeakPasswordException -> "La contraseña no cumple los requisitos."
     is FirebaseAuthInvalidUserException,
-    is FirebaseAuthInvalidCredentialsException -> "Correo o contraseña incorrectos."
+    is FirebaseAuthInvalidCredentialsException -> CREDENCIALES_INCORRECTAS
     is FirebaseTooManyRequestsException -> "Demasiados intentos. Espera unos minutos e intenta de nuevo."
     is FirebaseNetworkException -> SIN_CONEXION
     is FirebaseFunctionsException -> when (e.code) {
