@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +68,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
     var attemptedSubmit by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     // Cada paso empieza arriba.
     LaunchedEffect(s.step) { scrollState.scrollTo(0) }
@@ -87,7 +89,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     .background(BarrioColors.Background)
                     .padding(horizontal = 24.dp)
             ) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // Top Bar: Back arrow + Title
                 Row(
@@ -117,12 +119,12 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     )
                 }
 
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // Step Indicator: 1 - 2 - 3 (queda fijo arriba)
                 RegisterStepIndicator(currentStep = s.step)
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
             }
 
             // CONTENIDO DESPLAZABLE: Formulario de datos con scroll independiente
@@ -149,7 +151,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     fontSize = 14.sp
                 )
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
 
                 RegisterField(
                     label = "Nombre completo",
@@ -370,7 +372,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                 RegisterError(s.error)
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
         }
 
             // PIE FIJO: el botón del paso siempre se ve, aunque las validaciones alarguen el formulario
@@ -395,7 +397,8 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                                 attemptedSubmit = false
                                 vm.nextStep()
                             } else {
-                                // Lleva el formulario arriba para que se vea el primer error.
+                                // Cierra el teclado y sube el formulario: así se ven todas las validaciones.
+                                focusManager.clearFocus()
                                 scope.launch { scrollState.animateScrollTo(0) }
                             }
                         },
@@ -805,9 +808,9 @@ private fun RegisterField(
     error: String? = null,
     tag: String
 ) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 14.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
         Text(label, color = BarrioColors.TextHint, fontSize = 14.sp)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
@@ -827,7 +830,7 @@ private fun RegisterField(
             )
         )
         if (error != null) {
-            Text(error, color = BarrioColors.Yellow, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
+            Text(error, color = BarrioColors.Yellow, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, start = 4.dp))
         }
     }
 }
