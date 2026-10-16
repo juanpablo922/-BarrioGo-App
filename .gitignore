@@ -8,3 +8,6 @@
 /captures
 .externalNativeBuild
 .cxx
+
+# Configuración de Firebase con datos reales: no se sube al repo
+/app/google-services.json

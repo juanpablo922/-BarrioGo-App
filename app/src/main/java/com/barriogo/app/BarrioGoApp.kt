@@ -9,9 +9,19 @@ import com.barriogo.app.data.Hasher
 import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.data.SessionStore
+import com.barriogo.app.data.auth.AuthRepository
+import com.barriogo.app.data.auth.Resultado
+import com.barriogo.app.data.perfiles.PerfilesRepository
+import kotlinx.coroutines.SupervisorJob
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
 import com.barriogo.app.domain.Role
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.firestore
+import com.google.firebase.firestore.firestoreSettings
+import com.google.firebase.firestore.persistentCacheSettings
+import com.google.firebase.functions.functions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,22 +33,72 @@ class AppContainer(context: Context) {
     val repo = BarrioRepository(db)
     val store = SessionStore(context)
 
+    /** Cuenta del dueño (Firebase Auth) y registro de la tienda en Firestore. */
+    val authRepo = AuthRepository()
+
+    /** Para trabajo que no depende de una pantalla (copiar perfiles de Firestore a Room). */
+    val alcance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Perfiles de la tienda: Firestore es la fuente de verdad, Room la copia que leen las pantallas. */
+    val perfiles = PerfilesRepository(db, alcance)
+
+    /** R5 → R6: la clave de 4 números que se acaba de escribir, mientras se llena "Crea tu perfil". */
+    var claveEnCurso: String? = null
+
+    /**
+     * Último administrador que entró con su clave en este celular (id en Firestore y hora).
+     * Durante 10 minutos puede crear perfiles aunque se vuelva al selector.
+     */
+    private var adminVerificado: Pair<String, Long>? = null
+
+    fun recordarAdmin(remoteId: String) {
+        adminVerificado = remoteId to System.currentTimeMillis()
+    }
+
+    fun adminParaCrearPerfiles(): String? =
+        adminVerificado?.takeIf { System.currentTimeMillis() - it.second < 10 * 60 * 1000 }?.first
+
+    /** Empieza a sincronizar los perfiles de la tienda (cuentas reales; la demo es solo local). */
+    fun sincronizarPerfiles() {
+        val tienda = store.tiendaId
+        if (!store.demo && tienda != null && authRepo.correoActual != null) perfiles.sincronizar(tienda)
+    }
+
     /** Perfil que está atendiendo ahora. Se pierde al cerrar la app: siempre se pide la clave de nuevo. */
     val activeProfileId = MutableStateFlow<Long?>(null)
 
-    suspend fun authenticateStore(email: String, pass: String): Boolean {
-        // Soporte para cuenta de demostración rápida
-        if (email.equals("tienda@barriogo.com", ignoreCase = true) && pass == "123456") {
+    /**
+     * L2 · Ingreso. Devuelve null si entra, o el mensaje de error para mostrar.
+     * - Cuenta demo (tienda@barriogo.com / 123456): datos de ejemplo, solo en el celular.
+     * - Cualquier otra: Firebase Auth (necesita internet la primera vez en cada celular).
+     */
+    suspend fun authenticateStore(email: String, pass: String): String? {
+        if (email.trim().equals(DEMO_CORREO, ignoreCase = true) && pass == DEMO_CONTRASENA) {
+            authRepo.salir()                 // la demo no se mezcla con una cuenta real
             seedDemoData()
-            return true
+            store.demo = true
+            return null
         }
-        // Validación con la tienda real registrada por el usuario
-        if (store.registered) {
-            val emailMatches = email.equals(store.email, ignoreCase = true)
-            val passMatches = store.checkPassword(pass)
-            return emailMatches && passMatches
+        return when (val r = authRepo.ingresar(email, pass)) {
+            is Resultado.Ok -> {
+                store.demo = false
+                null
+            }
+            is Resultado.Error -> r.mensaje
         }
-        return false
+    }
+
+    /** "Salir de la tienda": cierra la sesión de Firebase y la de la demo. */
+    fun signOutOfStore() {
+        activeProfileId.value = null
+        store.signedIn = false
+        perfiles.detener()
+        authRepo.salir()
+    }
+
+    companion object {
+        const val DEMO_CORREO = "tienda@barriogo.com"
+        const val DEMO_CONTRASENA = "123456"
     }
 
     suspend fun seedDemoData() {
@@ -143,6 +203,15 @@ class BarrioGoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Antes de cualquier uso de Firestore: caché persistente para trabajar sin internet.
+        Firebase.firestore.firestoreSettings = firestoreSettings {
+            setLocalCacheSettings(persistentCacheSettings { setSizeBytes(200L * 1024 * 1024) })
+        }
+        if (BuildConfig.USAR_EMULADORES) {             // 10.0.2.2 = el PC visto desde el emulador de Android
+            Firebase.auth.useEmulator("10.0.2.2", 9099)
+            Firebase.firestore.useEmulator("10.0.2.2", 8080)
+            Firebase.functions(AuthRepository.REGION).useEmulator("10.0.2.2", 5001)
+        }
         container = AppContainer(this)
     }
 }

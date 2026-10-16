@@ -2,6 +2,7 @@ package com.barriogo.app.ui.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.barriogo.app.domain.Validaciones
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,11 +20,12 @@ data class LoginUiState(
 )
 
 /**
- * Autenticación de la tienda con verificación de credenciales reales y modo demo.
+ * L2 · Ingreso de la tienda: cuenta real (Firebase Auth) o cuenta demo.
+ * [authenticate] devuelve null si entra, o el mensaje de error para mostrar
+ * (ver AppContainer.authenticateStore).
  */
 class LoginViewModel(
-    private val authenticate: suspend (email: String, password: String) -> Boolean =
-        { _, _ -> true }
+    private val authenticate: suspend (email: String, password: String) -> String?,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LoginUiState())
@@ -40,25 +42,31 @@ class LoginViewModel(
 
     fun onLoginClick() {
         val s = _state.value
-        val emailOk = android.util.Patterns.EMAIL_ADDRESS.matcher(s.email).matches()
-        val passOk = s.password.length >= 6
+        if (s.isLoading) return
+        val emailOk = Validaciones.correoValido(s.email)
+        val passOk = s.password.isNotEmpty()
         if (!emailOk || !passOk) {
             _state.update {
                 it.copy(
                     emailError = if (emailOk) null else "Escribe un correo válido",
-                    passwordError = if (passOk) null else "Mínimo 6 caracteres"
+                    passwordError = if (passOk) null else "Escribe tu contraseña"
                 )
             }
             return
         }
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
-            val ok = authenticate(s.email, s.password)
+            val error = authenticate(s.email, s.password)
             _state.update {
                 it.copy(
                     isLoading = false,
-                    loginSuccess = ok,
-                    passwordError = if (ok) null else "Correo o contraseña incorrectos. Si no tienes cuenta, regístrate gratis abajo."
+                    loginSuccess = error == null,
+                    // Firebase no dice si el correo existe (protección contra la enumeración): un solo mensaje.
+                    passwordError = when (error) {
+                        null -> null
+                        "Correo o contraseña incorrectos." -> "Correo o contraseña incorrectos. Si no tienes cuenta, regístrate gratis abajo."
+                        else -> error
+                    }
                 )
             }
         }

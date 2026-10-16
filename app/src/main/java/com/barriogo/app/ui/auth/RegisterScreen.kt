@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.barriogo.app.domain.Validaciones
 import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.theme.BarrioColors
 
@@ -169,7 +170,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     value = s.email,
                     onValueChange = { vm.updateRegister { r -> r.copy(email = it) } },
                     keyboardType = KeyboardType.Email,
-                    error = if (attemptedSubmit && (!s.email.contains("@") || s.email.length < 5)) "Ingresa un correo electrónico válido" else null,
+                    error = if (attemptedSubmit && !Validaciones.correoValido(s.email)) "Ingresa un correo electrónico válido" else null,
                     tag = "email_input"
                 )
 
@@ -180,7 +181,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     onValueChange = { vm.updateRegister { r -> r.copy(phone = it) } },
                     keyboardType = KeyboardType.Phone,
                     leadingIcon = { Icon(Icons.Outlined.Phone, null, tint = BarrioColors.TextHint, modifier = Modifier.size(20.dp)) },
-                    error = if (attemptedSubmit && s.phone.replace(" ", "").length < 7) "El número debe tener 10 dígitos" else null,
+                    error = if (attemptedSubmit && !Validaciones.celularValido(s.phone)) "El celular debe tener 10 números y empezar por 3" else null,
                     tag = "phone_input"
                 )
 
@@ -189,7 +190,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                 Button(
                     onClick = {
                         attemptedSubmit = true
-                        if (s.ownerName.isNotBlank() && s.storeName.isNotBlank() && s.address.isNotBlank() && s.email.contains("@")) {
+                        if (s.problem == null) {
                             attemptedSubmit = false
                             vm.nextStep()
                         }
@@ -280,6 +281,7 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                RegisterError(s.error)
                 Spacer(Modifier.height(24.dp))
 
                 Button(
@@ -399,14 +401,14 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
 
                 Spacer(Modifier.height(28.dp))
 
+                RegisterError(s.error)
+                if (s.error != null) Spacer(Modifier.height(12.dp))
+
                 Button(
                     onClick = {
-                        if (s.password.isNotBlank() && s.password == s.confirmPassword) {
-                            vm.saveBusinessData()
-                            showSuccessModal = true
-                        }
+                        vm.finishRegistration { showSuccessModal = true }
                     },
-                    enabled = s.password.isNotBlank() && s.password == s.confirmPassword,
+                    enabled = !s.loading && s.password.isNotBlank() && s.password == s.confirmPassword,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
@@ -420,7 +422,11 @@ fun RegisterScreen(onFinished: () -> Unit, onGoLogin: () -> Unit = {}) {
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                 ) {
-                    Text("Finalizar registro", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (s.loading) "Creando tu tienda…" else "Finalizar registro",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
 
@@ -714,6 +720,19 @@ private fun RegisterField(
         if (error != null) {
             Text(error, color = BarrioColors.Yellow, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
         }
+    }
+}
+
+/** Error del paso actual (validación o respuesta de Firebase). */
+@Composable
+private fun RegisterError(error: String?) {
+    if (error != null) {
+        Text(
+            error,
+            color = BarrioColors.Error,
+            fontSize = 14.sp,
+            modifier = Modifier.fillMaxWidth().testTag("register_error"),
+        )
     }
 }
 

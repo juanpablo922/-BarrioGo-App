@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -15,6 +16,10 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        // true = usar los emuladores de Firebase del PC (10.0.2.2) en vez del proyecto real.
+        // Se levantan desde barriogo-backend con: pnpm emuladores
+        buildConfigField("Boolean", "USAR_EMULADORES", "false")
     }
 
     buildTypes {
@@ -28,7 +33,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 
@@ -65,6 +73,17 @@ dependencies {
 
     // Corrutinas (Flow, viewModelScope) de forma explícita para evitar problemas de resolución
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // Firebase (plan Blaze): cuentas (Auth), datos de la tienda (Firestore, con caché sin internet)
+    // y funciones del servidor (registro, perfiles, recuperar la contraseña con código)
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-functions")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    // Firebase trae "listenablefuture:9999.0-empty", que deja a CameraX sin ListenableFuture.
+    // Guava completa la vuelve a poner (InvoiceScanner usa ProcessCameraProvider.getInstance()).
+    implementation("com.google.guava:guava:33.3.1-android")
 
     testImplementation("junit:junit:4.13.2")
 }

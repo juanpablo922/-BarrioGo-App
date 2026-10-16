@@ -29,26 +29,18 @@ import com.barriogo.app.R
 import com.barriogo.app.ui.theme.BarrioColors
 import kotlinx.coroutines.delay
 
-/** Pantalla de arranque: muestra la portada oficial de BarrioGo y navega al Login del prototipo. */
+/**
+ * Pantalla de arranque: muestra la portada oficial de BarrioGo mientras [decide] revisa la sesión
+ * (Firebase o cuenta demo) y navega a donde corresponda.
+ */
 @Composable
-fun SplashScreen(
-    isRegistered: Boolean,
-    isSignedIn: Boolean,
-    hasProfiles: Boolean,
-    onGoLogin: () -> Unit,
-    onGoRegister: () -> Unit,
-    onGoProfileSelector: () -> Unit,
-) {
+fun SplashScreen(decide: suspend () -> Unit) {
     val alphaAnim = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
         alphaAnim.animateTo(1f, animationSpec = tween(650))
         delay(1400)
-        if (isSignedIn && hasProfiles) {
-            onGoProfileSelector()
-        } else {
-            onGoLogin()
-        }
+        decide()
     }
 
     Column(

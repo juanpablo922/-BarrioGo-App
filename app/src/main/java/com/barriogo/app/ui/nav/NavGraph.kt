@@ -15,7 +15,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavType
+import android.widget.Toast
 import com.barriogo.app.BarrioGoApp
+import com.barriogo.app.data.auth.Destino
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.ui.auth.*
 import com.barriogo.app.ui.cash.CashScreen
@@ -81,28 +83,46 @@ fun BarrioGoNavGraph() {
             NavHost(navController = nav, startDestination = Routes.SPLASH) {
 
                 composable(Routes.SPLASH) {
-                    val profiles by app.container.repo.profiles.collectAsState(initial = emptyList())
-                    SplashScreen(
-                        isRegistered = app.container.store.registered,
-                        isSignedIn = app.container.store.signedIn,
-                        hasProfiles = profiles.isNotEmpty(),
-                        onGoRegister = { nav.navigate(Routes.REGISTER) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                        onGoLogin = { nav.navigate(Routes.LOGIN) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                        onGoProfileSelector = { nav.navigate(Routes.PROFILE_SELECTOR) { popUpTo(Routes.SPLASH) { inclusive = true } } },
-                    )
+                    SplashScreen(decide = {
+                        val c = app.container
+                        val ruta = if (c.authRepo.correoActual == null) {
+                            // Sin cuenta de Firebase: solo la demo (datos de ejemplo en el celular) entra directo.
+                            if (c.store.demo && c.store.signedIn && c.db.profileDao().count() > 0) Routes.PROFILE_SELECTOR else Routes.LOGIN
+                        } else {
+                            val inicio = c.authRepo.destinoInicial(c.store.tiendaId)
+                            inicio.tiendaId?.let { c.store.tiendaId = it }
+                            c.sincronizarPerfiles()
+                            when (inicio.destino) {
+                                Destino.INGRESAR -> Routes.LOGIN
+                                Destino.COMPLETAR_REGISTRO -> Routes.REGISTER     // cuenta creada pero sin tienda
+                                Destino.CREAR_CLAVE -> Routes.CREATE_PIN          // tienda sin perfiles
+                                Destino.ELEGIR_PERFIL -> Routes.PROFILE_SELECTOR
+                            }
+                        }
+                        nav.navigate(ruta) { popUpTo(Routes.SPLASH) { inclusive = true } }
+                    })
                 }
 
                 composable(Routes.LOGIN) {
                     LoginScreen(
                         onLoggedIn = {
                             app.container.store.signedIn = true
-                            nav.navigate(Routes.PROFILE_SELECTOR) { popUpTo(Routes.LOGIN) { inclusive = true } }
+                            // El Splash decide si falta la tienda, la clave o solo elegir perfil.
+                            nav.navigate(Routes.SPLASH) { popUpTo(Routes.LOGIN) { inclusive = true } }
                         },
                         onGoRegister = { nav.navigate(Routes.REGISTER) },
+                        onForgotPassword = { nav.navigate(Routes.RECUPERAR) },
                         onToggleTheme = {
                             val curr = app.container.store.darkTheme.value
                             app.container.store.setDark(!curr)
                         },
+                    )
+                }
+
+                composable(Routes.RECUPERAR) {
+                    RecuperarScreen(
+                        onVolver = { nav.popBackStack() },
+                        onListo = { nav.popBackStack(Routes.LOGIN, inclusive = false) },
                     )
                 }
 
@@ -113,28 +133,38 @@ fun BarrioGoNavGraph() {
                     )
                 }
 
+                // R5 · "Crea tu clave" → R6 · "Crea tu perfil": un solo perfil, con esa clave.
                 composable(Routes.CREATE_PIN) {
                     val vm = com.barriogo.app.ui.barrioViewModel { com.barriogo.app.ui.auth.AuthViewModel(it) }
                     CreatePinScreen { pin ->
-                        vm.createAdminProfile(pin) {
-                            nav.navigate(Routes.CREATE_PROFILE) { popUpTo(Routes.CREATE_PIN) { inclusive = true } }
-                        }
+                        vm.guardarClaveEnCurso(pin)
+                        nav.navigate(Routes.CREATE_PROFILE) { popUpTo(Routes.CREATE_PIN) { inclusive = true } }
                     }
                 }
 
                 composable(Routes.CREATE_PROFILE) {
                     val vm = com.barriogo.app.ui.barrioViewModel { com.barriogo.app.ui.auth.AuthViewModel(it) }
+                    val context = LocalContext.current
+                    LaunchedEffect(Unit) {
+                        // Sin clave no hay perfil: primero R5.
+                        if (!vm.hayClaveEnCurso) nav.navigate(Routes.CREATE_PIN) { popUpTo(Routes.CREATE_PROFILE) { inclusive = true } }
+                    }
                     CreateProfileScreen { name, role ->
-                        vm.createProfile(name, role, "1234") {
-                            nav.navigate(Routes.BIOMETRIC)
-                        }
+                        vm.crearPerfil(
+                            name,
+                            role,
+                            onDone = { nav.navigate(Routes.BIOMETRIC) { popUpTo(Routes.CREATE_PROFILE) { inclusive = true } } },
+                            onError = { mensaje -> Toast.makeText(context, mensaje, Toast.LENGTH_LONG).show() },
+                        )
                     }
                 }
 
                 composable(Routes.BIOMETRIC) {
+                    val vm = com.barriogo.app.ui.barrioViewModel { com.barriogo.app.ui.auth.AuthViewModel(it) }
                     BiometricScreen { enabled ->
+                        vm.guardarHuella(enabled)
                         nav.navigate(Routes.PROFILE_SELECTOR) {
-                            popUpTo(Routes.REGISTER) { inclusive = true }
+                            popUpTo(nav.graph.id) { inclusive = true }
                         }
                     }
                 }
@@ -142,9 +172,9 @@ fun BarrioGoNavGraph() {
                 composable(Routes.PROFILE_SELECTOR) {
                     ProfileSelectorScreen(
                         onPick = { id -> nav.navigate(Routes.pinLogin(id)) },
-                        onCreateProfile = { nav.navigate(Routes.CREATE_PROFILE) },
+                        onCreateProfile = { nav.navigate(Routes.CREATE_PIN) },
                         onLogout = {
-                            app.container.store.signedIn = false
+                            app.container.signOutOfStore()
                             nav.navigate(Routes.LOGIN) { popUpTo(Routes.PROFILE_SELECTOR) { inclusive = true } }
                         }
                     )

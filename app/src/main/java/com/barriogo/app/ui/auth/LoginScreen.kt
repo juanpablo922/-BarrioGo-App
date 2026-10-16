@@ -15,6 +15,7 @@ import com.barriogo.app.ui.login.LoginScreen as NewLoginScreen
 fun LoginScreen(
     onLoggedIn: () -> Unit,
     onGoRegister: () -> Unit,
+    onForgotPassword: () -> Unit = {},
     onToggleTheme: () -> Unit = {},
 ) {
     val app = LocalContext.current.applicationContext as BarrioGoApp
@@ -23,6 +24,7 @@ fun LoginScreen(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    // null = entra; si no, el mensaje de error (Firebase o cuenta demo).
                     return LoginViewModel(authenticate = { email, pass ->
                         app.container.authenticateStore(email, pass)
                     }) as T
@@ -33,7 +35,7 @@ fun LoginScreen(
 
     NewLoginScreen(
         onLoginSuccess = onLoggedIn,
-        onForgotPassword = { /* Recuperar clave */ },
+        onForgotPassword = onForgotPassword,
         onRegister = onGoRegister,
         onToggleTheme = {
             val curr = app.container.store.darkTheme.value

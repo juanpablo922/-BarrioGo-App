@@ -20,7 +20,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.barriogo.app.BarrioGoApp
-import com.barriogo.app.data.Hasher
+import androidx.compose.runtime.rememberCoroutineScope
+import com.barriogo.app.data.perfiles.PerfilesRepository
+import kotlinx.coroutines.launch
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.ui.components.NumericKeypad
 import com.barriogo.app.ui.components.PinSquares
@@ -38,20 +40,34 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var showForgotPinDialog by remember { mutableStateOf(false) }
 
+    val alcance = rememberCoroutineScope()
+    val context = LocalContext.current
+    var verificando by remember { mutableStateOf(false) }
+
     LaunchedEffect(profileId) {
-        val p = container.repo.profile(profileId)
-        profile = p ?: ProfileEntity(profileId, "Don Juan", "ADMIN", "", "", biometric = true)
+        // Un perfil que no existe no tiene clave: se vuelve al selector.
+        profile = container.repo.profile(profileId) ?: return@LaunchedEffect onBack()
     }
 
+    fun entrar() {
+        container.activeProfileId.value = profileId
+        profile?.takeIf { it.isAdmin }?.remoteId?.let(container::recordarAdmin)
+        onSuccess()
+    }
+
+    /** L4 · Compara con el hash guardado (PBKDF2), sin internet. */
     fun tryPin(value: String) {
         val p = profile ?: return
-        // Si no tiene hash configurado aún (modo demo), cualquier PIN de 4 dígitos pasa (o "1234")
-        if (p.pinHash.isBlank() || Hasher.matches(p.pinSalt, value, p.pinHash) || value == "1234") {
-            container.activeProfileId.value = profileId
-            onSuccess()
-        } else {
-            error = "Clave incorrecta. Intenta de nuevo."
-            pin = ""
+        if (verificando) return
+        verificando = true
+        alcance.launch {
+            if (PerfilesRepository.claveCorrecta(p, value)) {
+                entrar()
+            } else {
+                error = "Clave incorrecta. Intenta de nuevo."
+                pin = ""
+            }
+            verificando = false
         }
     }
 
@@ -99,7 +115,7 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        profile?.initial ?: "J",
+                        profile?.initial ?: "",
                         color = BarrioColors.TextPrimary,
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold
@@ -109,7 +125,7 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    profile?.name ?: "Don Juan",
+                    profile?.name.orEmpty(),
                     color = BarrioColors.TextPrimary,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
@@ -154,11 +170,17 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     onBackspace = {
                         if (pin.isNotEmpty()) pin = pin.dropLast(1)
                     },
-                    leftActionIcon = {
-                        // Fingerprint button in bottom-left
+                    leftActionIcon = if (profile?.biometric == true && Huella.disponible(context)) {
+                        {
+                        // Huella real: BiometricPrompt confirma antes de entrar.
                         IconButton(onClick = {
-                            container.activeProfileId.value = profileId
-                            onSuccess()
+                            Huella.pedir(
+                                context,
+                                titulo = "Entrar como ${profile?.name.orEmpty()}",
+                                subtitulo = "Apoya el dedo en el lector",
+                                onOk = { entrar() },
+                                onError = { error = it },
+                            )
                         }) {
                             Icon(
                                 Icons.Outlined.Fingerprint,
@@ -167,7 +189,8 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                                 modifier = Modifier.size(34.dp)
                             )
                         }
-                    },
+                        }
+                    } else null,
                     modifier = Modifier.testTag("pin_keypad")
                 )
 

@@ -68,12 +68,8 @@ fun ProfileSelectorScreen(
                     verticalArrangement = Arrangement.spacedBy(36.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    val displayList = if (profiles.isNotEmpty()) profiles else listOf(
-                        ProfileEntity(1, "Don Juan", "ADMIN", "", ""),
-                        ProfileEntity(2, "María", "SELLER", "", ""),
-                        ProfileEntity(3, "Carlos", "SELLER", "", ""),
-                        ProfileEntity(4, "Luisa", "SELLER", "", "")
-                    )
+                    // Solo perfiles reales (Firestore o demo): nunca perfiles de ejemplo sin clave.
+                    val displayList = profiles
 
                     for (i in displayList.indices step 2) {
                         Row(

@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.barriogo.app.ui.theme.BarrioColors
-import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalContext
 
 enum class BiometricState { IDLE, SCANNING, SUCCESS }
 
@@ -38,12 +38,27 @@ fun BiometricScreen(
     onFinished: (enabled: Boolean) -> Unit
 ) {
     var state by remember { mutableStateOf(BiometricState.IDLE) }
+    val context = LocalContext.current
+    var aviso by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(state) {
-        if (state == BiometricState.SCANNING) {
-            delay(1200)
-            state = BiometricState.SUCCESS
+    /** Activa la huella solo si Android la confirma con BiometricPrompt (antes era una animación). */
+    fun activarHuella() {
+        aviso = null
+        if (!Huella.disponible(context)) {
+            aviso = Huella.motivoNoDisponible(context)
+            return
         }
+        state = BiometricState.SCANNING
+        Huella.pedir(
+            context,
+            titulo = "Activar huella",
+            subtitulo = "Apoya el dedo para confirmar",
+            onOk = { state = BiometricState.SUCCESS },
+            onError = { mensaje ->
+                aviso = mensaje
+                state = BiometricState.IDLE
+            },
+        )
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -173,7 +188,7 @@ fun BiometricScreen(
                     }
                 } else {
                     Button(
-                        onClick = { state = BiometricState.SCANNING },
+                        onClick = { activarHuella() },
                         enabled = state == BiometricState.IDLE,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -207,6 +222,17 @@ fun BiometricScreen(
                 }
 
                 Spacer(Modifier.height(12.dp))
+
+                if (aviso != null) {
+                    Text(
+                        aviso!!,
+                        color = BarrioColors.Error,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp).testTag("biometric_aviso"),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
 
                 Text(
                     "Tu huella se queda guardada en este celular. No la enviamos a ningún lado.",

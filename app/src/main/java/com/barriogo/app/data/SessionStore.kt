@@ -25,6 +25,25 @@ class SessionStore(context: Context) {
         get() = sp.getBoolean("signedIn", false)
         set(v) { sp.edit().putBoolean("signedIn", v).apply() }
 
+    /**
+     * Tienda de la cuenta en Firestore. Se guarda para abrir la app sin internet.
+     * La sesión de una cuenta real (correo y contraseña) la guarda Firebase Auth.
+     */
+    var tiendaId: String?
+        get() = sp.getString("tiendaId", null)
+        set(v) { sp.edit().putString("tiendaId", v).apply() }
+
+    /** Identificador de este celular para tiendas/{t}/dispositivos/{id}. Se crea una vez. */
+    val dispositivoId: String
+        get() = sp.getString("dispositivoId", null) ?: java.util.UUID.randomUUID().toString().also {
+            sp.edit().putString("dispositivoId", it).apply()
+        }
+
+    /** true si se entró con la cuenta de demostración (datos de ejemplo, solo en el celular). */
+    var demo: Boolean
+        get() = sp.getBoolean("demo", false)
+        set(v) { sp.edit().putBoolean("demo", v).apply() }
+
     var ownerName: String
         get() = sp.getString("owner", "") ?: ""
         set(v) { sp.edit().putString("owner", v).apply() }

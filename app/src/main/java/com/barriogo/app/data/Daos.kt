@@ -14,6 +14,10 @@ interface ProfileDao {
     @Insert suspend fun insert(p: ProfileEntity): Long
     @Update suspend fun update(p: ProfileEntity)
     @Query("DELETE FROM profiles WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT * FROM profiles WHERE remoteId = :remoteId LIMIT 1") suspend fun byRemoteId(remoteId: String): ProfileEntity?
+    /** Deja solo los perfiles que siguen activos en Firestore (borra también los solo locales). */
+    @Query("DELETE FROM profiles WHERE remoteId IS NULL OR remoteId NOT IN (:remoteIds)")
+    suspend fun deleteAllExcept(remoteIds: List<String>)
 }
 
 @Dao

@@ -7,6 +7,7 @@ object Routes {
     // Acceso y registro
     const val LOGIN = "login"
     const val REGISTER = "register"
+    const val RECUPERAR = "recuperar"
     const val CREATE_PIN = "create_pin"
     const val PROFILE_SELECTOR = "profile_selector"
     const val PIN_LOGIN = "pin_login/{profileId}"

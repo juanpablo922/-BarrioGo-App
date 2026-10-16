@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.barriogo.app.R
+import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.theme.BarrioColors
 
 import androidx.compose.ui.platform.testTag
@@ -52,10 +53,9 @@ fun LoginScreen(
     onForgotPassword: () -> Unit = {},
     onRegister: () -> Unit,
     onToggleTheme: () -> Unit = {},
-    viewModel: LoginViewModel = viewModel()
+    viewModel: LoginViewModel = barrioViewModel { c -> LoginViewModel { e, p -> c.authenticateStore(e, p) } }
 ) {
     val state by viewModel.state.collectAsState()
-    var showForgotDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.loginSuccess) {
         if (state.loginSuccess) {
@@ -64,43 +64,13 @@ fun LoginScreen(
         }
     }
 
-    if (showForgotDialog) {
-        AlertDialog(
-            onDismissRequest = { showForgotDialog = false },
-            containerColor = BarrioColors.Surface,
-            title = {
-                Text(
-                    "¿Olvidaste tu contraseña?",
-                    color = BarrioColors.TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-            },
-            text = {
-                Text(
-                    "Para recuperar el acceso a tu tienda, ingresa con el PIN de Administrador (ej. 1234) o comunícate con soporte de BarrioGo: soporte@barriogo.com",
-                    color = BarrioColors.TextHint,
-                    fontSize = 14.sp
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { showForgotDialog = false },
-                    modifier = Modifier.testTag("forgot_dialog_ok")
-                ) {
-                    Text("Entendido", color = BarrioColors.Yellow, fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-
     LoginContent(
         state = state,
         onEmailChange = viewModel::onEmailChange,
         onPasswordChange = viewModel::onPasswordChange,
         onTogglePassword = viewModel::togglePasswordVisibility,
         onLogin = viewModel::onLoginClick,
-        onForgotPassword = { showForgotDialog = true; onForgotPassword() },
+        onForgotPassword = onForgotPassword,
         onRegister = onRegister,
         onToggleTheme = onToggleTheme
     )

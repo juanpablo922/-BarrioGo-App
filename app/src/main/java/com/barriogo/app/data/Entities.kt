@@ -12,7 +12,13 @@ data class ProfileEntity(
     val role: String,
     val pinHash: String,
     val pinSalt: String,
+    /** Huella activada para este perfil EN ESTE CELULAR (la huella misma nunca sale del celular). */
     val biometric: Boolean = false,
+    /**
+     * Id del perfil en Firestore (tiendas/{t}/perfiles/{remoteId}). Los perfiles de una cuenta real
+     * son una copia local de Firestore; null = perfil solo local (cuenta demo).
+     */
+    val remoteId: String? = null,
 ) {
     val isAdmin: Boolean get() = role == Role.ADMIN.name
     val initial: String get() = name.trim().firstOrNull()?.uppercase() ?: "?"

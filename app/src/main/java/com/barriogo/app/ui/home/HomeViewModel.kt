@@ -64,10 +64,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     fun toggleHide() { container.store.setHide(!container.store.hideAmounts.value) }
 
-    fun signOutOfStore() {
-        container.activeProfileId.value = null
-        container.store.signedIn = false
-    }
+    fun signOutOfStore() = container.signOutOfStore()
 
     fun switchProfile() { container.activeProfileId.value = null }
 }
