@@ -232,5 +232,8 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                 }
             )
         }
+
+        // Comparar la clave (PBKDF2) tarda un momento en celulares lentos
+        if (verificando) com.barriogo.app.ui.components.LoadingOverlay("Verificando tu clave…", detalle = "Un momento, por favor.")
     }
 }

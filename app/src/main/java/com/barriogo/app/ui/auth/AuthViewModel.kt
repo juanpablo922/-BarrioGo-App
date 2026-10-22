@@ -75,6 +75,10 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
 
     private var creatingProfile = false
 
+    /** Mensaje de lo que se está guardando en Firebase (para el cargando a pantalla completa), o null. */
+    private val _ocupado = MutableStateFlow<String?>(null)
+    val ocupado: StateFlow<String?> = _ocupado
+
     // ---- Registro del negocio ----
     fun updateRegister(f: (RegisterState) -> RegisterState) { _register.value = f(_register.value).copy(error = null) }
 
@@ -179,9 +183,11 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
         if (clave == null || !Validaciones.claveValida(clave)) return onError("Primero crea la clave de 4 números.")
         if (creatingProfile) return
         creatingProfile = true
+        _ocupado.value = "Creando tu perfil…"
         viewModelScope.launch {
             CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.Crear(role))?.let {
                 creatingProfile = false
+                _ocupado.value = null
                 return@launch onError(it)
             }
             val tienda = store.tiendaId
@@ -205,9 +211,13 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
                     store.signedIn = true
                     container.activeProfileId.value = resultado.valor
                     container.sincronizarPerfiles()
+                    _ocupado.value = null
                     onDone(resultado.valor)
                 }
-                is Resultado.Error -> onError(resultado.mensaje)
+                is Resultado.Error -> {
+                    _ocupado.value = null
+                    onError(resultado.mensaje)
+                }
             }
             creatingProfile = false
         }
@@ -224,8 +234,11 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
 
     /** L4 con un administrador para abrir el manejo de perfiles. Sin internet. */
     fun verificarAdmin(perfil: ProfileEntity, clave: String, onOk: () -> Unit, onError: (String) -> Unit) {
+        _ocupado.value = "Verificando tu clave…"
         viewModelScope.launch {
-            if (perfil.isAdmin && PerfilesRepository.claveCorrecta(perfil, clave)) {
+            val correcta = perfil.isAdmin && PerfilesRepository.claveCorrecta(perfil, clave)
+            _ocupado.value = null
+            if (correcta) {
                 container.recordarAdmin(perfil)
                 onOk()
             } else {
@@ -249,12 +262,14 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
         if (guardandoPerfil) return
         val admin = container.adminVigente() ?: return onError("Primero entra con la clave de un administrador.")
         guardandoPerfil = true
+        _ocupado.value = "Guardando cambios…"
         viewModelScope.launch {
             val todos = profiles.first()
             val problema = problemaNombre(nombre, todos, perfil.id)
                 ?: CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.CambiarRol(perfil.id, rol))
             val r = problema?.let { Resultado.Error(it) }
                 ?: container.perfiles.actualizar(store.tiendaId.takeUnless { store.demo }, perfil, nombre, rol, admin.remoteId)
+            _ocupado.value = null
             when (r) {
                 is Resultado.Ok -> {
                     // Un administrador que se pasa a vendedor ya no puede seguir manejando perfiles.
@@ -272,9 +287,11 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
         if (guardandoPerfil) return
         val admin = container.adminVigente() ?: return onError("Primero entra con la clave de un administrador.")
         guardandoPerfil = true
+        _ocupado.value = "Eliminando perfil…"
         viewModelScope.launch {
             val r = CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.Eliminar(perfil.id))?.let { Resultado.Error(it) }
                 ?: container.perfiles.eliminar(store.tiendaId.takeUnless { store.demo }, perfil, admin.remoteId)
+            _ocupado.value = null
             when (r) {
                 is Resultado.Ok -> {
                     if (perfil.id == admin.id) container.olvidarAdmin()

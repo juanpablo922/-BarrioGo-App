@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.barriogo.app.domain.CuposPerfiles
 import com.barriogo.app.domain.Role
+import com.barriogo.app.ui.components.LoadingOverlay
 import com.barriogo.app.ui.theme.BarrioColors
 
 /**
@@ -33,6 +34,8 @@ import com.barriogo.app.ui.theme.BarrioColors
 @Composable
 fun CreateProfileScreen(
     adminLleno: Boolean = false,
+    /** Mensaje mientras se guarda el perfil en Firebase (muestra el cargando), o null. */
+    cargando: String? = null,
     onDone: (name: String, role: Role) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -165,6 +168,8 @@ fun CreateProfileScreen(
                 Spacer(Modifier.height(16.dp))
             }
         }
+
+        cargando?.let { LoadingOverlay(it) }
     }
 }
 
