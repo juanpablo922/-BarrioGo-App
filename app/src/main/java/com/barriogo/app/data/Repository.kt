@@ -24,7 +24,21 @@ class BarrioRepository(private val db: AppDatabase) {
     suspend fun deleteMovement(id: Long) = db.movementDao().delete(id)
     suspend fun voidMovement(id: Long) {
         val m = db.movementDao().byId(id) ?: return
-        db.movementDao().update(m.copy(voided = true))
+        db.movementDao().update(m.copy(voided = true, voidedAt = System.currentTimeMillis()))
+    }
+
+    /** Corrige valor y concepto. Guarda el valor original la primera vez para no perder el rastro. */
+    suspend fun editMovement(id: Long, amount: Long, title: String) {
+        val m = db.movementDao().byId(id) ?: return
+        if (m.voided) return
+        db.movementDao().update(
+            m.copy(
+                amount = amount,
+                title = title,
+                editedAt = System.currentTimeMillis(),
+                originalAmount = m.originalAmount ?: m.amount.takeIf { it != amount },
+            )
+        )
     }
 
     suspend fun openCash(opening: Long, by: String): CashSessionEntity {
