@@ -1,6 +1,5 @@
 package com.barriogo.app.ui.login
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,17 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,13 +18,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -42,14 +34,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.barriogo.app.R
 import com.barriogo.app.ui.barrioViewModel
+import com.barriogo.app.ui.components.BarrioLogo
+import com.barriogo.app.ui.components.FigmaInput
+import com.barriogo.app.ui.components.FigmaInputColors
 import com.barriogo.app.ui.theme.BarrioColors
-
-import androidx.compose.ui.platform.testTag
-import androidx.compose.runtime.*
-import androidx.compose.ui.zIndex
 
 @Composable
 fun LoginScreen(
@@ -80,6 +70,7 @@ fun LoginScreen(
     )
 }
 
+/** L2 · Ingreso con correo (Figma "Pantalla · L2 Ingreso", Login=Normal). */
 @Composable
 fun LoginContent(
     state: LoginUiState,
@@ -92,12 +83,13 @@ fun LoginContent(
     onToggleTheme: () -> Unit
 ) {
     val focus = LocalFocusManager.current
+    val texto = FigmaInputColors.texto
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(BarrioColors.Background)
-            .systemBarsPadding()
+            .navigationBarsPadding()
             .imePadding()
             .testTag("login_screen")
     ) {
@@ -105,244 +97,193 @@ fun LoginContent(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
+                .padding(start = 24.dp, end = 24.dp, top = 56.dp, bottom = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(32.dp))
-
-            val logoRes = if (BarrioColors.isDark) R.drawable.logo_barriogo else R.drawable.logo_barriogo_light
-            Image(
-                painter = painterResource(logoRes),
-                contentDescription = "BarrioGo",
-                modifier = Modifier
-                    .width(160.dp)
-                    .testTag("barriogo_logo")
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            Text(
-                "Ingresa a tu tienda",
-                color = BarrioColors.TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.testTag("login_title")
-            )
-
-            Spacer(Modifier.height(40.dp))
+            // Header Section
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                BarrioLogo(
+                    Modifier.testTag("barriogo_logo"),
+                    iconWidth = 104.dp, iconHeight = 100.dp, fontSize = 35.sp, gap = 7.dp,
+                )
+                Text(
+                    "Ingresa a tu tienda",
+                    color = texto,
+                    fontSize = 22.sp,
+                    lineHeight = 28.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp).testTag("login_title")
+                )
+            }
 
             if (state.noConnection) {
                 NoConnectionNotice(Modifier.testTag("login_no_connection"))
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Correo
-            Text(
-                "Correo electrónico",
-                color = BarrioColors.TextHint,
-                fontSize = 14.sp,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            BarrioTextField(
-                value = state.email,
-                onValueChange = onEmailChange,
-                placeholder = "tu@correo.com",
-                leadingIcon = { Icon(Icons.Outlined.Email, null, tint = BarrioColors.TextPrimary) },
-                keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Next,
-                onNext = { focus.moveFocus(FocusDirection.Down) },
-                error = state.emailError,
-                modifier = Modifier.testTag("email_input")
-            )
+            // Form Section
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Campo · L2 Correo
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Correo electrónico",
+                        color = if (state.email.isEmpty()) FigmaInputColors.tenue else texto,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
+                    )
+                    FigmaInput(
+                        value = state.email,
+                        onValueChange = onEmailChange,
+                        placeholder = "tu@correo.com",
+                        leading = { Icon(painterResource(R.drawable.fig_correo), null, tint = texto) },
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Next,
+                        onNext = { focus.moveFocus(FocusDirection.Down) },
+                        error = state.emailError,
+                        modifier = Modifier.testTag("email_input")
+                    )
+                }
 
-            Spacer(Modifier.height(16.dp))
-
-            // Contraseña
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Contraseña", color = BarrioColors.TextPrimary, fontSize = 14.sp)
-                Text(
-                    "Olvidé mi contraseña",
-                    color = BarrioColors.Yellow,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .clickable(onClick = onForgotPassword)
-                        .testTag("forgot_password_link")
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            BarrioTextField(
-                value = state.password,
-                onValueChange = onPasswordChange,
-                placeholder = "••••••••",
-                leadingIcon = { Icon(Icons.Outlined.Lock, null, tint = BarrioColors.TextPrimary) },
-                trailingIcon = {
-                    IconButton(
-                        onClick = onTogglePassword,
-                        modifier = Modifier.testTag("password_visibility_toggle")
+                // Campo · L2 Contraseña
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            if (state.passwordVisible) Icons.Outlined.Visibility
-                            else Icons.Outlined.VisibilityOff,
-                            contentDescription = if (state.passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
-                            tint = BarrioColors.TextPrimary
+                        Text("Contraseña", color = texto, fontSize = 14.sp, lineHeight = 20.sp)
+                        Text(
+                            "Olvidé mi contraseña",
+                            color = Color(0xFFF2C849),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            modifier = Modifier
+                                .clickable(onClick = onForgotPassword)
+                                .padding(start = 8.dp, top = 7.5.dp, bottom = 8.5.dp)
+                                .testTag("forgot_password_link")
                         )
                     }
-                },
-                visualTransformation =
-                    if (state.passwordVisible) VisualTransformation.None
-                    else PasswordVisualTransformation(),
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done,
-                onDone = { focus.clearFocus(); onLogin() },
-                error = state.passwordError,
-                highlightBorder = state.credentialsError,
-                modifier = Modifier.testTag("password_input")
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            // Botón Ingresar
-            Button(
-                onClick = { focus.clearFocus(); onLogin() },
-                enabled = !state.isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("login_button"),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = BarrioColors.Yellow,
-                    contentColor = BarrioColors.OnYellow,
-                    disabledContainerColor = BarrioColors.Yellow.copy(alpha = 0.6f),
-                    disabledContentColor = BarrioColors.OnYellow
-                ),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
-            ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = BarrioColors.OnYellow,
-                        strokeWidth = 2.dp
+                    FigmaInput(
+                        value = state.password,
+                        onValueChange = onPasswordChange,
+                        placeholder = "••••••••",
+                        leading = { Icon(painterResource(R.drawable.fig_candado), null, tint = texto, modifier = Modifier.padding(start = 2.dp)) },
+                        trailing = {
+                            Box(
+                                Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(onClick = onTogglePassword)
+                                    .testTag("password_visibility_toggle"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                val descripcion = if (state.passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
+                                if (state.passwordVisible) {
+                                    Icon(Icons.Outlined.Visibility, descripcion, tint = texto, modifier = Modifier.size(22.dp))
+                                } else {
+                                    Icon(painterResource(R.drawable.fig_ojo_tachado), descripcion, tint = texto)
+                                }
+                            }
+                        },
+                        visualTransformation =
+                            if (state.passwordVisible) VisualTransformation.None
+                            else PasswordVisualTransformation(),
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                        onDone = { focus.clearFocus(); onLogin() },
+                        error = state.passwordError,
+                        highlightBorder = state.credentialsError,
+                        modifier = Modifier.testTag("password_input")
                     )
-                } else {
-                    Text(
-                        if (state.noConnection) "Reintentar" else "Ingresar",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
+                }
+
+                // Submit Button (pt 16)
+                Box(
+                    Modifier
+                        .padding(top = 16.dp)
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .shadow(7.dp, RoundedCornerShape(12.dp), ambientColor = Color(0x33F2C849), spotColor = Color(0x33F2C849))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFF2C849))
+                        .clickable(enabled = !state.isLoading) { focus.clearFocus(); onLogin() }
+                        .testTag("login_button"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (state.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = BarrioColors.OnYellow,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                if (state.noConnection) "Reintentar" else "Ingresar",
+                                color = BarrioColors.OnYellow,
+                                fontSize = 16.sp,
+                                lineHeight = 20.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Icon(painterResource(R.drawable.fig_flecha_derecha), null, tint = BarrioColors.OnYellow)
+                        }
+                    }
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("¿No tienes cuenta?", color = BarrioColors.TextPrimary, fontSize = 14.sp)
-                Spacer(Modifier.width(8.dp))
+            // Footer Section (pt 40)
+            Row(
+                Modifier.padding(top = 40.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("¿No tienes cuenta?", color = texto, fontSize = 16.sp, lineHeight = 24.sp)
                 Text(
                     "Registra tu tienda",
-                    color = BarrioColors.Yellow,
-                    fontSize = 14.sp,
+                    color = if (BarrioColors.isDark) Color(0xFFF2C849) else BarrioColors.Gold,
+                    fontSize = 16.sp,
+                    lineHeight = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clickable(onClick = onRegister)
                         .testTag("register_link")
                 )
             }
-
-            Spacer(Modifier.height(24.dp))
         }
 
-        // Botón de tema: posicionado al final del Box para garantizar prioridad visual y táctil
+        // Botón Apariencia: círculo de 44 a 24 del borde derecho y 48 del borde superior
         val context = androidx.compose.ui.platform.LocalContext.current
-        IconButton(
-            onClick = {
-                val app = context.applicationContext as? com.barriogo.app.BarrioGoApp
-                app?.let {
-                    val curr = it.container.store.darkTheme.value
-                    it.container.store.setDark(!curr)
-                }
-                onToggleTheme()
-            },
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 20.dp)
-                .size(48.dp)
-                .background(BarrioColors.Surface, CircleShape)
-                .testTag("theme_toggle_button")
+                .padding(top = 48.dp, end = 24.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(if (BarrioColors.isDark) Color(0xFF22593F) else Color(0xFFFFFDF9))
+                .clickable {
+                    val app = context.applicationContext as? com.barriogo.app.BarrioGoApp
+                    app?.let {
+                        val curr = it.container.store.darkTheme.value
+                        it.container.store.setDark(!curr)
+                    }
+                    onToggleTheme()
+                }
+                .testTag("theme_toggle_button"),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = if (BarrioColors.isDark) Icons.Filled.WbSunny else Icons.Filled.DarkMode,
-                contentDescription = if (BarrioColors.isDark) "Cambiar a modo claro" else "Cambiar a modo oscuro",
-                tint = BarrioColors.Yellow,
-                modifier = Modifier.size(24.dp)
-            )
+            val descripcion = if (BarrioColors.isDark) "Cambiar a modo claro" else "Cambiar a modo oscuro"
+            if (BarrioColors.isDark) {
+                Icon(painterResource(R.drawable.fig_sol), descripcion, tint = Color.Unspecified)
+            } else {
+                Icon(Icons.Filled.DarkMode, descripcion, tint = BarrioColors.Gold, modifier = Modifier.size(20.dp))
+            }
         }
-    }
-}
-
-@Composable
-private fun BarrioTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    leadingIcon: @Composable () -> Unit,
-    keyboardType: KeyboardType,
-    imeAction: ImeAction,
-    modifier: Modifier = Modifier,
-    trailingIcon: (@Composable () -> Unit)? = null,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    onNext: () -> Unit = {},
-    onDone: () -> Unit = {},
-    error: String? = null,
-    highlightBorder: Boolean = false
-) {
-    val shape = RoundedCornerShape(14.dp)
-    val warning = loginWarningColor()
-    // Figma L2: el mensaje va 8dp debajo del campo y su espacio está siempre reservado,
-    // así el formulario no salta. El borde solo cambia con credenciales incorrectas.
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .then(if (highlightBorder) Modifier.border(2.dp, warning, shape) else Modifier),
-            placeholder = { Text(placeholder, color = BarrioColors.TextHint, fontSize = 15.sp) },
-            leadingIcon = leadingIcon,
-            trailingIcon = trailingIcon,
-            singleLine = true,
-            visualTransformation = visualTransformation,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-            keyboardActions = KeyboardActions(onNext = { onNext() }, onDone = { onDone() }),
-            shape = shape,
-            textStyle = TextStyle(color = BarrioColors.TextPrimary, fontSize = 15.sp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = BarrioColors.Surface,
-                unfocusedContainerColor = BarrioColors.Surface,
-                focusedBorderColor = if (highlightBorder) warning else BarrioColors.Yellow,
-                unfocusedBorderColor = if (highlightBorder) warning else BarrioColors.YellowStroke,
-                cursorColor = BarrioColors.Yellow,
-                focusedTextColor = BarrioColors.TextPrimary,
-                unfocusedTextColor = BarrioColors.TextPrimary
-            )
-        )
-        Text(
-            error.orEmpty(),
-            color = warning,
-            fontSize = 14.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .alpha(if (error != null) 1f else 0f)
-        )
     }
 }
 
