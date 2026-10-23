@@ -3,7 +3,7 @@ package com.barriogo.app.domain
 /**
  * Cupos de perfiles por tienda (P1, P2). Misma regla que functions/src/dominio/perfiles.ts del
  * backend: siempre queda al menos 1 administrador; como máximo 2 administradores y 5 perfiles.
- * La app la revisa antes de llamar al servidor (y en la cuenta demo, que no tiene servidor).
+ * La app la revisa antes de llamar al servidor.
  */
 object CuposPerfiles {
     const val MAXIMO_PERFILES = 5

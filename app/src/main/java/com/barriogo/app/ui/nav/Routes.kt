@@ -34,9 +34,9 @@ object Routes {
     /** G1. aviso = mensaje corto al volver de guardar ("Gasto guardado…"). */
     const val EXPENSES = "expenses?aviso={aviso}"
     fun expenses(aviso: String? = null) = if (aviso == null) "expenses" else "expenses?aviso=${android.net.Uri.encode(aviso)}"
-    /** G2. Sin id registra; con id edita ese gasto. */
+    /** G2. Sin id registra; con id (documento de Firestore) edita ese gasto. */
     const val REGISTER_EXPENSE = "register_expense?id={id}"
-    fun registerExpense(id: Long? = null) = if (id == null) "register_expense" else "register_expense?id=$id"
+    fun registerExpense(id: String? = null) = if (id == null) "register_expense" else "register_expense?id=$id"
 
     const val FIADOS = "fiados"
     const val NEW_FIADO = "new_fiado"

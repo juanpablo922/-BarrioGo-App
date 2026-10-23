@@ -72,7 +72,7 @@ import java.time.LocalDate
 @Composable
 fun ExpensesScreen(
     onBack: () -> Unit,
-    onEdit: (Long) -> Unit,
+    onEdit: (String) -> Unit,
     /** Mensaje que deja G2 al guardar ("Gasto guardado…"). */
     avisoInicial: String? = null,
 ) {
@@ -127,7 +127,7 @@ fun ExpensesScreen(
                 onCerrar = { detalleId = null },
                 onEditar = {
                     detalleId = null
-                    onEdit(detalle.id)
+                    detalle.remoteId?.let(onEdit)
                 },
                 onAnular = { anularId = detalle.id },
             )
@@ -139,7 +139,7 @@ fun ExpensesScreen(
                 principal = "Anular",
                 onPrincipal = {
                     anularId = null
-                    vm.anular(anular.id) {
+                    vm.anular(anular.remoteId.orEmpty()) {
                         detalleId = null
                         mensaje = MensajeFlotante("Gasto anulado. Tu caja se actualizó.")
                     }

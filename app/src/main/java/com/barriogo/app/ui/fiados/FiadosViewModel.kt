@@ -30,10 +30,8 @@ class FiadosViewModel(private val container: AppContainer) : ViewModel() {
 
     private var profileId: Long = 0
     private var profileName: String = ""
-    private val _sessionId = MutableStateFlow<Long?>(null)
     init {
         viewModelScope.launch { container.activeProfileId.collect { id -> profileId = id ?: 0; profileName = id?.let { container.repo.profile(it)?.name } ?: "" } }
-        viewModelScope.launch { container.repo.activeSession.collect { _sessionId.value = it?.id } }
     }
 
     fun addClient(name: String, phone: String, onDone: (Long) -> Unit) {
@@ -42,11 +40,11 @@ class FiadosViewModel(private val container: AppContainer) : ViewModel() {
 
     fun registerFiado(clientId: Long, itemsText: String, amount: Long, onDone: () -> Unit) {
         viewModelScope.launch {
-            container.repo.insertMovement(
+            container.registrarMovimiento(
                 MovementEntity(
                     type = MovementType.FIADO.name, amount = amount, title = "Fiado", detail = itemsText,
                     payMethod = PayMethod.EFECTIVO.name, clientId = clientId, profileId = profileId, profileName = profileName,
-                    sessionId = _sessionId.value, createdAt = System.currentTimeMillis(),
+                    createdAt = System.currentTimeMillis(),
                 ),
             )
             onDone()
@@ -55,11 +53,11 @@ class FiadosViewModel(private val container: AppContainer) : ViewModel() {
 
     fun registerPayment(clientId: Long, amount: Long, onDone: () -> Unit) {
         viewModelScope.launch {
-            container.repo.insertMovement(
+            container.registrarMovimiento(
                 MovementEntity(
                     type = MovementType.ABONO.name, amount = amount, title = "Abono", detail = "Abono a fiado",
                     payMethod = PayMethod.EFECTIVO.name, clientId = clientId, profileId = profileId, profileName = profileName,
-                    sessionId = _sessionId.value, createdAt = System.currentTimeMillis(),
+                    createdAt = System.currentTimeMillis(),
                 ),
             )
             onDone()

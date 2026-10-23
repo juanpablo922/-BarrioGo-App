@@ -3,8 +3,7 @@ package com.barriogo.app.ui.cash
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.barriogo.app.AppContainer
-import com.barriogo.app.data.ArqueoEntity
-import com.barriogo.app.data.CashSessionEntity
+import com.barriogo.app.data.caja.Caja
 import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.data.auth.Resultado
@@ -14,11 +13,15 @@ import com.barriogo.app.domain.EstadoCaja
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.ReglasCaja
 import com.barriogo.app.domain.TotalesCaja
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -30,8 +33,8 @@ data class CashUiState(
     val hoy: LocalDate = LocalDate.now(),
     val estado: EstadoCaja = EstadoCaja.SIN_ABRIR,
     /** Caja abierta (de hoy o de un día anterior que no se cerró). */
-    val session: CashSessionEntity? = null,
-    val ultimaCerrada: CashSessionEntity? = null,
+    val session: Caja? = null,
+    val ultimaCerrada: Caja? = null,
     /** Movimientos de la caja abierta, del más nuevo al más viejo (sin los anulados). */
     val movimientosCaja: List<MovementEntity> = emptyList(),
     val totales: TotalesCaja? = null,
@@ -59,6 +62,7 @@ data class CashUiState(
  * Caja diaria: C1 (Caja), K0/K1 (apertura), c2–c4 (cierre y su corrección), a1 (arqueo) y la hora de cierre.
  * [ocupado] es el texto del "Cargando…" mientras se guarda; [error] el aviso para mostrar.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class CashViewModel(private val container: AppContainer) : ViewModel() {
     private val caja = container.caja
 
@@ -72,14 +76,16 @@ class CashViewModel(private val container: AppContainer) : ViewModel() {
 
     private val perfil = MutableStateFlow<ProfileEntity?>(null)
 
+    /** Movimientos de la caja abierta: gastos de Firestore + ventas, fiados y abonos de Room. */
+    private val deLaCajaAbierta = caja.abierta.map { it?.id }.distinctUntilChanged().flatMapLatest { caja.movimientosDe(it) }
+
     val state: StateFlow<CashUiState> = combine(
-        combine(caja.abierta, caja.ultimaCerrada, container.repo.movements, ::Triple),
+        combine(caja.abierta, caja.ultimaCerrada, deLaCajaAbierta, container.repo.movements, ::Cuatro),
         perfil,
         container.store.horaCierre,
         reloj,
-    ) { (abierta, cerrada, movimientos), perfil, hora, ahora ->
+    ) { (abierta, cerrada, deLaCaja, movimientos), perfil, hora, ahora ->
         val hoy = ahora.toLocalDate()
-        val deLaCaja = abierta?.let { s -> movimientos.filter { it.sessionId == s.id } }.orEmpty()
         val deudas = movimientos.filter { !it.voided && it.clientId != null }
             .groupBy { it.clientId }
             .mapValues { (_, ms) -> ms.sumOf { m -> if (m.type == MovementType.FIADO.name) m.amount else if (m.type == MovementType.ABONO.name) -m.amount else 0L } }
@@ -92,7 +98,7 @@ class CashViewModel(private val container: AppContainer) : ViewModel() {
             ultimaCerrada = cerrada,
             movimientosCaja = deLaCaja.filter { !it.voided },
             totales = abierta?.let { ReglasCaja.totales(it.openingAmount, deLaCaja) },
-            totalesCierre = cerrada?.let { c -> ReglasCaja.totales(c.openingAmount, movimientos.filter { it.sessionId == c.id }) },
+            totalesCierre = cerrada?.totalesCierre,
             fiadoTotal = deudas.sum(),
             fiadoClientes = deudas.size,
             perfil = perfil,
@@ -114,21 +120,22 @@ class CashViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun abrir(monto: Long, onOk: (CashSessionEntity) -> Unit) = lanzar("Guardando la apertura…", onOk) { p -> caja.abrir(monto, p) }
+    fun abrir(monto: Long, onOk: () -> Unit) = lanzar("Guardando la apertura…", { _: Unit -> onOk() }) { p -> caja.abrir(monto, p) }
 
-    fun corregirApertura(monto: Long, onOk: (CashSessionEntity) -> Unit) {
+    fun corregirApertura(monto: Long, onOk: () -> Unit) {
         val s = state.value.session ?: return run { _error.value = "No hay una caja abierta." }
-        lanzar("Guardando la apertura…", onOk) { p -> caja.corregirApertura(s.id, monto, p) }
+        lanzar("Guardando la apertura…", { _: Unit -> onOk() }) { p -> caja.corregirApertura(s, monto, p) }
     }
 
-    fun cerrar(contado: Long, observaciones: String, onOk: (CashSessionEntity) -> Unit) {
+    /** [onOk] recibe el id de la caja cerrada, para mostrar su comprobante cuando llegue de Firestore. */
+    fun cerrar(contado: Long, observaciones: String, onOk: (String) -> Unit) {
         val s = state.value.session ?: return run { _error.value = "No hay una caja abierta." }
-        lanzar("Cerrando la caja…", onOk) { p -> caja.cerrar(s.id, contado, observaciones, p) }
+        lanzar("Cerrando la caja…", { _: Unit -> onOk(s.id) }) { p -> caja.cerrar(s, contado, observaciones, p) }
     }
 
-    fun corregirCierre(contado: Long, observaciones: String, onOk: (CashSessionEntity) -> Unit) {
+    fun corregirCierre(contado: Long, observaciones: String, onOk: () -> Unit) {
         val s = state.value.ultimaCerrada ?: return run { _error.value = "No hay un cierre para corregir." }
-        lanzar("Guardando la corrección…", onOk) { p -> caja.corregirCierre(s.id, contado, observaciones, p) }
+        lanzar("Guardando la corrección…", { _: Unit -> onOk() }) { p -> caja.corregirCierre(s, contado, observaciones, p) }
     }
 
     fun guardarHoraCierre(hora: String, onOk: () -> Unit) {
@@ -142,12 +149,7 @@ class CashViewModel(private val container: AppContainer) : ViewModel() {
     /** a1 · Arqueo parcial (no cierra la caja). */
     fun saveArqueo(counted: Long, note: String, onDone: () -> Unit) {
         val s = state.value.session ?: return
-        lanzar("Guardando el arqueo…", { _: Unit -> onDone() }) { p ->
-            container.repo.saveArqueo(
-                ArqueoEntity(sessionId = s.id, at = System.currentTimeMillis(), expected = state.value.saldo, counted = counted, note = note.trim(), by = p.name),
-            )
-            Resultado.Ok(Unit)
-        }
+        lanzar("Guardando el arqueo…", { _: Unit -> onDone() }) { p -> caja.guardarArqueo(s, state.value.saldo, counted, note, p) }
     }
 
     private fun <T> lanzar(mensaje: String, onOk: (T) -> Unit, accion: suspend (ProfileEntity) -> Resultado<T>) {
@@ -173,6 +175,8 @@ class CashViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
     }
+
+    private data class Cuatro<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
     companion object {
         private const val MINIMO_CARGANDO = 500L

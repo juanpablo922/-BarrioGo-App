@@ -26,7 +26,7 @@ data class LoginUiState(
 )
 
 /**
- * L2 · Ingreso de la tienda: cuenta real (Firebase Auth) o cuenta demo.
+ * L2 · Ingreso de la tienda con Firebase Auth.
  * [authenticate] devuelve null si entra, o el mensaje de error para mostrar
  * (ver AppContainer.authenticateStore).
  */

@@ -140,7 +140,7 @@ fun ProfileSelectorScreen(
 
                 Spacer(Modifier.height(36.dp))
 
-                // Perfiles reales (Firestore o demo) + la tarjeta "Agregar perfil" mientras haya cupo.
+                // Perfiles de Firestore + la tarjeta "Agregar perfil" mientras haya cupo.
                 val celdas: List<ProfileEntity?> = profiles + if (hayCupo) listOf(null) else emptyList()
                 Column(
                     verticalArrangement = Arrangement.spacedBy(32.dp),

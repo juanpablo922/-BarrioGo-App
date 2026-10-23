@@ -123,7 +123,6 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
                 is Resultado.Ok -> {
                     // Copia local para mostrar los datos sin internet.
                     store.tiendaId = r.valor
-                    store.demo = false
                     container.sincronizarPerfiles()
                     store.ownerName = s.ownerName.trim()
                     store.storeName = s.storeName.trim()
@@ -176,7 +175,7 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
     /**
      * R6 / P1 · "Crear perfil": un solo perfil con la clave de R5. En una cuenta real lo crea el
      * servidor (crearPerfil); el primero de la tienda debe ser administrador y los siguientes los crea
-     * un administrador (el perfil activo). En la cuenta demo queda solo en el celular.
+     * un administrador (el perfil activo).
      */
     fun crearPerfil(name: String, role: Role, onDone: (Long) -> Unit, onError: (String) -> Unit) {
         val clave = container.claveEnCurso
@@ -191,8 +190,8 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
                 return@launch onError(it)
             }
             val tienda = store.tiendaId
-            val resultado = if (store.demo || tienda == null) {
-                Resultado.Ok(container.perfiles.crearLocal(name, role, clave))
+            val resultado = if (tienda == null) {
+                Resultado.Error("Primero termina el registro de tu tienda.")
             } else {
                 val actor = container.activeProfileId.value?.let { container.repo.profile(it) }
                     ?.takeIf { it.isAdmin }?.remoteId
@@ -268,7 +267,7 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
             val problema = problemaNombre(nombre, todos, perfil.id)
                 ?: CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.CambiarRol(perfil.id, rol))
             val r = problema?.let { Resultado.Error(it) }
-                ?: container.perfiles.actualizar(store.tiendaId.takeUnless { store.demo }, perfil, nombre, rol, admin.remoteId)
+                ?: container.perfiles.actualizar(store.tiendaId, perfil, nombre, rol, admin.remoteId)
             _ocupado.value = null
             when (r) {
                 is Resultado.Ok -> {
@@ -290,7 +289,7 @@ class AuthViewModel(private val container: AppContainer) : ViewModel() {
         _ocupado.value = "Eliminando perfil…"
         viewModelScope.launch {
             val r = CuposPerfiles.problema(cupos(), CuposPerfiles.Cambio.Eliminar(perfil.id))?.let { Resultado.Error(it) }
-                ?: container.perfiles.eliminar(store.tiendaId.takeUnless { store.demo }, perfil, admin.remoteId)
+                ?: container.perfiles.eliminar(store.tiendaId, perfil, admin.remoteId)
             _ocupado.value = null
             when (r) {
                 is Resultado.Ok -> {

@@ -7,6 +7,17 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+/**
+ * Dueño de los datos locales (ventas, fiados y abonos en Room): la tienda de Firestore.
+ * Cada cuenta del celular ve solo lo suyo; antes, una cuenta nueva heredaba lo de la anterior.
+ */
+object CuentaLocal {
+    /** Todavía sin tienda (registro a medias): no ve datos de nadie. */
+    const val NINGUNA = ""
+
+    fun de(tiendaId: String?): String = tiendaId?.trim()?.takeIf { it.isNotEmpty() } ?: NINGUNA
+}
+
 /** c4 · Corregir cierre: máximo 2 veces (functions/src/dominio/caja.ts → MAXIMO_CAMBIOS_CIERRE). */
 const val MAX_CLOSING_CHANGES = 2
 

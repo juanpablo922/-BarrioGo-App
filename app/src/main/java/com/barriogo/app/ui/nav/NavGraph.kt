@@ -108,8 +108,7 @@ fun BarrioGoNavGraph() {
                     SplashScreen(decide = {
                         val c = app.container
                         val ruta = if (c.authRepo.correoActual == null) {
-                            // Sin cuenta de Firebase: solo la demo (datos de ejemplo en el celular) entra directo.
-                            if (c.store.demo && c.store.signedIn && c.db.profileDao().count() > 0) Routes.PROFILE_SELECTOR else Routes.LOGIN
+                            Routes.LOGIN   // sin cuenta de Firebase no se entra: la app lee de Firebase
                         } else {
                             val inicio = c.authRepo.destinoInicial(c.store.tiendaId)
                             inicio.tiendaId?.let { c.store.tiendaId = it }
@@ -304,9 +303,9 @@ fun BarrioGoNavGraph() {
 
                 composable(
                     Routes.REGISTER_EXPENSE,
-                    arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
+                    arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null }),
                 ) { entry ->
-                    val id = entry.arguments?.getLong("id")?.takeIf { it > 0 }
+                    val id = entry.arguments?.getString("id")?.takeIf { it.isNotBlank() }
                     // Al guardar se ve la lista de gastos con el aviso; editar vuelve a la lista que ya estaba abierta.
                     val alGuardar: (String) -> Unit = { aviso ->
                         nav.navigate(Routes.expenses(aviso)) {

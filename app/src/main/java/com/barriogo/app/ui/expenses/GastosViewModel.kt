@@ -25,12 +25,12 @@ data class GastosUiState(
     val periodo: PeriodoGastos = PeriodoGastos.HOY,
     /** Gastos del periodo, del más nuevo al más viejo. Los anulados se ven tachados. */
     val lista: List<MovementEntity> = emptyList(),
-    /** Id (Room) de la caja abierta: solo sus gastos se editan o anulan. */
-    val cajaAbiertaId: Long? = null,
+    /** Id (Firestore) de la caja abierta: solo sus gastos se editan o anulan. */
+    val cajaAbiertaId: String? = null,
 ) {
     val activos: List<MovementEntity> get() = lista.filter { !it.voided }
     val total: Long get() = activos.sumOf { it.amount }
-    fun editable(g: MovementEntity) = !g.voided && g.sessionId != null && g.sessionId == cajaAbiertaId
+    fun editable(g: MovementEntity) = !g.voided && g.cajaId != null && g.cajaId == cajaAbiertaId
 }
 
 /** G1 · Gastos y G2 · Registrar / Editar gasto. */
@@ -61,7 +61,7 @@ class GastosViewModel(private val container: AppContainer) : ViewModel() {
 
     fun elegirPeriodo(p: PeriodoGastos) { periodo.value = p }
 
-    fun cargar(id: Long) {
+    fun cargar(id: String) {
         viewModelScope.launch { _original.value = gastos.gasto(id) }
     }
 
@@ -70,10 +70,10 @@ class GastosViewModel(private val container: AppContainer) : ViewModel() {
     fun registrar(tipo: ExpenseKind?, monto: Long, detalle: String, onOk: () -> Unit) =
         lanzar("Guardando el gasto…", onOk) { p -> gastos.registrar(tipo, monto, detalle, p) }
 
-    fun editar(id: Long, tipo: ExpenseKind?, monto: Long, detalle: String, onOk: () -> Unit) =
+    fun editar(id: String, tipo: ExpenseKind?, monto: Long, detalle: String, onOk: () -> Unit) =
         lanzar("Guardando los cambios…", onOk) { p -> gastos.editar(id, tipo, monto, detalle, p) }
 
-    fun anular(id: Long, onOk: () -> Unit) = lanzar("Anulando el gasto…", onOk) { p -> gastos.anular(id, p) }
+    fun anular(id: String, onOk: () -> Unit) = lanzar("Anulando el gasto…", onOk) { p -> gastos.anular(id, p) }
 
     private fun lanzar(mensaje: String, onOk: () -> Unit, accion: suspend (ProfileEntity) -> Resultado<*>) {
         if (_ocupado.value != null) return

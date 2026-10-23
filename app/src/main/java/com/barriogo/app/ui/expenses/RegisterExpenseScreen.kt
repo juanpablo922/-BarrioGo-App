@@ -71,7 +71,7 @@ import com.barriogo.app.ui.theme.Inter
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun RegisterExpenseScreen(onBack: () -> Unit, onSaved: (String) -> Unit, gastoId: Long? = null) {
+fun RegisterExpenseScreen(onBack: () -> Unit, onSaved: (String) -> Unit, gastoId: String? = null) {
     val vm = barrioViewModel { GastosViewModel(it) }
     val ocupado by vm.ocupado.collectAsState()
     val error by vm.error.collectAsState()

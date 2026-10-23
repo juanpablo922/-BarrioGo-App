@@ -8,6 +8,8 @@ Este documento explica cómo y dónde se implementaron tres cosas:
 
 Rama de trabajo en ambos repositorios: `feature/caja-y-gastos`.
 
+> **De dónde lee la app.** La caja y los gastos se leen **de Firebase** (Firestore), en tiempo real y con su caché cuando no hay internet; ya no hay copia de la caja en Room. Ventas, fiados y abonos siguen en Room, ligados a la caja de Firestore y separados por tienda. La cuenta demo se quitó: solo se entra con una cuenta de Firebase.
+
 - App Android: `-BarrioGo-App`.
 - Backend: `barriogo-backend`, con Cloud Functions, reglas y pruebas.
 
@@ -21,7 +23,7 @@ Rama de trabajo en ambos repositorios: `feature/caja-y-gastos`.
 | **Sin la caja de hoy abierta no se registra nada**: ni ventas, ni gastos, ni fiados, ni abonos, ni voz o escáner. | `ui/cash/CajaRequerida.kt` envuelve esas rutas en `ui/nav/NavGraph.kt` (`ConCaja`) · `GastosRepository.registrar()` lo vuelve a revisar |
 | Al entrar con la clave, si hoy no hay caja, la app lleva a **Abrir caja (K0)**. | `NavGraph.kt`, ruta `PIN_LOGIN` → `onSuccess` |
 | La apertura debe ser mayor a $ 0 y como máximo $ 1.000.000.000. | `ReglasCaja.problemaApertura()` (igual que `montoValido()` en `firestore.rules`) |
-| La apertura se corrige **máximo 3 veces**. Cada cambio pide confirmación y deja registro. | `CajaRepository.corregirApertura()` · tabla Room `cash_changes` · Firestore `cajas/{c}/cambiosApertura/{n}` |
+| La apertura se corrige **máximo 3 veces**. Cada cambio pide confirmación y deja registro. | `CajaRepository.corregirApertura()` · Firestore `cajas/{c}/cambiosApertura/{n}` |
 | **Cualquier perfil puede cerrar** la caja. | `CajaRepository.cerrar()` · función `cerrarCaja` |
 | El cierre se corrige **máximo 2 veces**, y solo antes de abrir la caja siguiente. | `CajaRepository.corregirCierre()` · nueva función `corregirCierre` del backend |
 | Una caja de un día anterior que siga abierta hay que cerrarla antes de abrir la de hoy. | `EstadoCaja.ABIERTA_DIA_ANTERIOR` |
@@ -29,6 +31,7 @@ Rama de trabajo en ambos repositorios: `feature/caja-y-gastos`.
 | **Avisos de cierre:** 30 minutos antes de la hora ("Administrador: pronto se cierra la caja") y después de la hora cada 30 minutos mientras siga abierta. | `notificaciones/AvisosCierre.kt` · franja `FranjaAviso` en Inicio y Caja |
 | Gastos: el tipo es obligatorio, el monto va de 1 a 1.000 millones y "¿En qué fue?" de 1 a 200 letras. | `domain/Gastos.kt` → `ReglasGasto` (igual que `movimientoBienFormado()` en `firestore.rules`) |
 | Solo se editan o anulan los gastos **de la caja abierta**. Anular no borra: el gasto queda tachado. | `GastosRepository.gastoCambiable()` · reglas `edicion()` / `anulacion()` |
+| **La caja es de cada tienda**, no del celular: otra cuenta en el mismo celular ve sus propias cajas. | Las cajas se leen de `tiendas/{t}/cajas` · ventas, fiados y abonos de Room se filtran por `cuenta` (= tienda) |
 
 ## 2. Dónde está cada cosa (Android)
 
@@ -42,19 +45,19 @@ Ruta base: `app/src/main/java/com/barriogo/app/`
 - `domain/Gastos.kt`: `ReglasGasto` (validaciones, mensaje bajo el botón, cambios al editar, filtros Hoy, Semana y Mes, id de categoría para Firestore) y `PeriodoGastos`.
 
 ### Datos
-- `data/Entities.kt`, `data/Daos.kt`, `data/AppDatabase.kt`: Room pasa de la **v3 a la v4** con la migración `MIGRACION_3_4`.
-  - `cash_sessions` gana `operationDate`, `closeEditsUsed` y `remoteId`.
-  - `movements` gana `remoteId` y `category`.
-  - Tabla nueva `cash_changes`: registro de cada cambio de apertura o cierre.
-- `data/caja/CajaRepository.kt`: abrir, corregir apertura, cerrar, corregir cierre y hora de cierre. Room es lo que leen las pantallas; en una cuenta real cada paso se copia a Firestore.
+- `data/caja/Caja.kt`: la caja tal como está en Firestore (apertura, cambios, cierre, totales del servidor).
+- `data/caja/CajaRepository.kt`: **lee las cajas de Firestore** (`tiendas/{t}/cajas`, escucha en tiempo real) y abre, corrige la apertura, guarda el arqueo, cierra, corrige el cierre y cambia la hora de cierre. Los totales de la caja abierta salen de sus gastos en Firestore más las ventas, fiados y abonos de Room.
 - `data/caja/CajaRemota.kt`
-  - Escrituras directas a Firestore, sin internet: apertura y cambios de apertura.
+  - Escucha y lectura única (con caché sin internet) de las cajas.
+  - Escrituras directas a Firestore, sin internet: apertura, cambios de apertura y arqueo parcial.
   - Callables: `cerrarCaja` y `corregirCierre`, que necesitan internet.
   - Escucha de `horaCierre`.
-- `data/movimientos/GastosRepository.kt`: CRUD de gastos con todas las validaciones.
-- `data/movimientos/MovimientosRemotos.kt`: copia de ventas y gastos en `tiendas/{t}/movimientos`, con los campos que exigen las reglas: `efectoCaja`, `categoriaGastoId`, `actualizadoPor`/`actualizadoEn` y la anulación.
+- `data/movimientos/GastosRepository.kt`: CRUD de gastos **solo en Firestore** (se leen y escriben allí), con todas las validaciones.
+- `data/movimientos/MovimientosRemotos.kt`: escucha de gastos y de los movimientos de una caja, y escrituras en `tiendas/{t}/movimientos` con los campos que exigen las reglas (`efectoCaja`, `categoriaGastoId`, `actualizadoPor`/`actualizadoEn`, anulación). Las ventas se copian aquí.
+- `data/Repository.kt`: el libro (`movements`) junta ventas, fiados y abonos de Room con los gastos de Firestore.
+- `data/Entities.kt`, `data/AppDatabase.kt`: Room v5 (`MIGRACION_4_5`): `movements` gana `cuenta` (tienda) y `cajaId` (caja de Firestore). La tabla `cash_sessions` queda solo como dato viejo; ya no se usa.
 - `data/SessionStore.kt`: `horaCierre` local, por defecto `"20:00"`.
-- `BarrioGoApp.kt`: `AppContainer` expone `caja`, `gastos`, `movimientosRemotos`, `perfilActivo()` y `enLaNube()`, y programa los avisos al iniciar.
+- `BarrioGoApp.kt`: `AppContainer` expone `caja`, `gastos`, `movimientosRemotos`, `perfilActivo()` y `registrarMovimiento()` (gasto → Firestore; venta, fiado o abono → Room en la caja abierta). Programa los avisos al iniciar y al cambiar de cuenta.
 
 ### Notificaciones
 - `notificaciones/AvisosCierre.kt`
@@ -126,7 +129,7 @@ En M1 · Registrar movimiento, la tarjeta "Gasto" abre G2. Así hay un solo form
 | Gasto: crear, editar, anular | `tiendas/{t}/movimientos/{id}` | Sí |
 | Hora de cierre | `tiendas/{t}.horaCierre` | Sí |
 
-La cuenta demo (`tienda@barriogo.com`) trabaja solo en el celular: todo queda en Room.
+No hay cuenta demo: todo usuario entra con una cuenta de Firebase.
 
 ## 6. Revisión contra el Figma
 
@@ -166,7 +169,7 @@ Después se corrigió lo siguiente:
 
 | Qué | Comando | Resultado |
 |---|---|---|
-| App: compilación y pruebas unitarias | `gradle :app:assembleDebug :app:testDebugUnitTest` | 55 pruebas en verde (nuevas: `CajaTest` 11, `GastosTest` 7) |
+| App: compilación y pruebas unitarias | `gradle :app:assembleDebug :app:testDebugUnitTest` | 56 pruebas en verde (nuevas: `CajaTest` 12, `GastosTest` 7) |
 | Backend: pruebas | `pnpm --filter @barriogo/functions test` | 62 en verde |
 | Backend: lint y tipos | `pnpm lint --filter @barriogo/functions` | En verde |
 | Reglas con emulador | `pnpm --filter @barriogo/pruebas-emulador test:reglas` | 37 en verde |
@@ -184,7 +187,7 @@ Aquí se usó sin intervalo para "compilar la app, correr pruebas Android y back
 ## 8. Limitaciones conocidas y siguientes pasos
 
 1. **Fiados y abonos todavía no se copian a Firestore.** Necesitan los clientes en Firestore, que es parte del módulo de fiados. Por eso, en una cuenta real, el comprobante del servidor (`cerrarCaja`) no incluye los abonos. Las pantallas sí los incluyen, porque calculan desde Room.
-2. **Cajas de otros celulares.** Room no copia todavía las cajas abiertas en otro celular de la misma tienda; solo la hora de cierre se sincroniza. Si dos celulares abren el mismo día, Firestore rechaza el segundo porque el id `{fecha}-1` ya existe y queda en el log.
+2. **Ventas, fiados y abonos siguen en Room.** Otro celular de la misma tienda ve la caja y los gastos (Firestore), pero no las ventas, fiados ni abonos registrados en este celular. Lo guardado en Room antes de la v5 no se sabe de qué tienda es y queda oculto (no se borra).
 3. **Los avisos son locales**, en cada celular, con alarma inexacta: Android puede retrasarlos unos minutos. Un aviso por push al administrador en otro celular requiere FCM.
 4. Una vez cerrada la caja de hoy, no se puede abrir otra el mismo día: solo se corrige el cierre.
 5. Tocar la notificación abre la app en el inicio de siempre (selector de perfil y clave); no lleva directo a Caja.

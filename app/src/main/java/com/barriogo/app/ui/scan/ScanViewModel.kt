@@ -6,6 +6,8 @@ import com.barriogo.app.AppContainer
 import com.barriogo.app.ai.InvoiceAgent
 import com.barriogo.app.ai.InvoiceDraft
 import com.barriogo.app.data.MovementEntity
+import com.barriogo.app.data.auth.Resultado
+import com.barriogo.app.domain.ExpenseKind
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,11 +25,9 @@ class ScanViewModel(private val container: AppContainer) : ViewModel() {
 
     private var profileId = 0L
     private var profileName = ""
-    private var sessionId: Long? = null
 
     init {
         viewModelScope.launch { container.activeProfileId.collect { id -> profileId = id ?: 0; profileName = id?.let { container.repo.profile(it)?.name } ?: "" } }
-        viewModelScope.launch { container.repo.activeSession.collect { sessionId = it?.id } }
     }
 
     fun onReading() { _state.value = _state.value.copy(phase = ScanPhase.READING, error = null) }
@@ -46,20 +46,26 @@ class ScanViewModel(private val container: AppContainer) : ViewModel() {
     fun confirm(draft: InvoiceDraft? = null, onSaved: () -> Unit) {
         val d = draft ?: _state.value.draft ?: return
         viewModelScope.launch {
-            container.repo.insertMovement(
+            // El gasto de la factura va a Firestore como cualquier gasto (tipo Proveedor).
+            val r = container.registrarMovimiento(
                 MovementEntity(
                     type = MovementType.GASTO.name,
                     amount = d.total,
                     title = d.supplier ?: "Gasto de proveedor",
-                    detail = "Proveedor",
+                    detail = ExpenseKind.PROVEEDOR.detail,
+                    category = ExpenseKind.PROVEEDOR.name,
                     payMethod = PayMethod.EFECTIVO.name,
                     profileId = profileId,
                     profileName = profileName,
-                    sessionId = sessionId,
-                    createdAt = d.dateMillis ?: System.currentTimeMillis(),
+                    // La hora del registro es la de ahora: firestore.rules no acepta registros anteriores a la apertura.
+                    createdAt = System.currentTimeMillis(),
                     extra = "factura" + (d.number?.let { " · $it" } ?: ""),
                 ),
             )
+            if (r is Resultado.Error) {
+                _state.value = _state.value.copy(phase = ScanPhase.ERROR, error = r.mensaje)
+                return@launch
+            }
             onSaved()
         }
     }

@@ -1,6 +1,7 @@
 package com.barriogo.app.data
 
 import android.content.Context
+import com.barriogo.app.domain.CuentaLocal
 import com.barriogo.app.domain.ReglasCaja
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +41,7 @@ class SessionStore(context: Context) {
      */
     var tiendaId: String?
         get() = sp.getString("tiendaId", null)
-        set(v) { sp.edit().putString("tiendaId", v).apply() }
+        set(v) { sp.edit().putString("tiendaId", v).apply(); _cuenta.value = CuentaLocal.de(v) }
 
     /** Identificador de este celular para tiendas/{t}/dispositivos/{id}. Se crea una vez. */
     val dispositivoId: String
@@ -48,10 +49,9 @@ class SessionStore(context: Context) {
             sp.edit().putString("dispositivoId", it).apply()
         }
 
-    /** true si se entró con la cuenta de demostración (datos de ejemplo, solo en el celular). */
-    var demo: Boolean
-        get() = sp.getBoolean("demo", false)
-        set(v) { sp.edit().putBoolean("demo", v).apply() }
+    /** Tienda dueña de los datos que se ven ahora (cambia al entrar con otra cuenta). */
+    private val _cuenta = MutableStateFlow(CuentaLocal.de(tiendaId))
+    val cuenta: StateFlow<String> = _cuenta
 
     var ownerName: String
         get() = sp.getString("owner", "") ?: ""

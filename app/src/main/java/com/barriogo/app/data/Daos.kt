@@ -29,36 +29,12 @@ interface ClientDao {
 
 @Dao
 interface MovementDao {
-    @Query("SELECT * FROM movements ORDER BY createdAt DESC, id DESC") fun observeAll(): Flow<List<MovementEntity>>
+    @Query("SELECT * FROM movements WHERE cuenta = :cuenta ORDER BY createdAt DESC, id DESC")
+    fun observeAll(cuenta: String): Flow<List<MovementEntity>>
     @Query("SELECT * FROM movements WHERE id = :id") suspend fun byId(id: Long): MovementEntity?
     @Insert suspend fun insert(m: MovementEntity): Long
     @Update suspend fun update(m: MovementEntity)
     @Query("DELETE FROM movements WHERE id = :id") suspend fun delete(id: Long)
-    @Query("SELECT * FROM movements WHERE sessionId = :sessionId ORDER BY createdAt DESC, id DESC")
-    suspend fun bySession(sessionId: Long): List<MovementEntity>
-}
-
-@Dao
-interface CashDao {
-    @Query("SELECT * FROM cash_sessions WHERE closedAt IS NULL ORDER BY id DESC LIMIT 1")
-    fun observeActive(): Flow<CashSessionEntity?>
-
-    @Query("SELECT * FROM cash_sessions WHERE closedAt IS NOT NULL ORDER BY id DESC LIMIT 1")
-    fun observeLastClosed(): Flow<CashSessionEntity?>
-
-    @Query("SELECT * FROM cash_sessions WHERE closedAt IS NULL ORDER BY id DESC LIMIT 1")
-    suspend fun active(): CashSessionEntity?
-
-    @Query("SELECT * FROM cash_sessions WHERE closedAt IS NOT NULL ORDER BY id DESC LIMIT 1")
-    suspend fun lastClosed(): CashSessionEntity?
-
-    @Query("SELECT * FROM cash_sessions WHERE id = :id") suspend fun byId(id: Long): CashSessionEntity?
-
-    /** Para saber si un gasto es de la caja abierta (solo esos se editan o anulan). */
-    @Query("SELECT * FROM cash_sessions") fun observeAll(): Flow<List<CashSessionEntity>>
-
-    @Insert suspend fun insert(s: CashSessionEntity): Long
-    @Update suspend fun update(s: CashSessionEntity)
-    @Insert suspend fun insertArqueo(a: ArqueoEntity): Long
-    @Insert suspend fun insertChange(c: CashChangeEntity): Long
+    @Query("SELECT * FROM movements WHERE cuenta = :cuenta AND cajaId = :cajaId ORDER BY createdAt DESC, id DESC")
+    fun observeByCaja(cuenta: String, cajaId: String): Flow<List<MovementEntity>>
 }

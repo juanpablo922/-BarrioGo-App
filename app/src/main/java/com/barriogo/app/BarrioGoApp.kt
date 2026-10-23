@@ -4,8 +4,6 @@ import android.app.Application
 import android.content.Context
 import com.barriogo.app.data.AppDatabase
 import com.barriogo.app.data.BarrioRepository
-import com.barriogo.app.data.ClientEntity
-import com.barriogo.app.data.Hasher
 import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.data.SessionStore
@@ -18,8 +16,7 @@ import com.barriogo.app.data.perfiles.PerfilesRepository
 import com.barriogo.app.notificaciones.AvisosCierre
 import kotlinx.coroutines.SupervisorJob
 import com.barriogo.app.domain.MovementType
-import com.barriogo.app.domain.PayMethod
-import com.barriogo.app.domain.Role
+import com.barriogo.app.domain.ReglasGasto
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.firestore
@@ -29,18 +26,18 @@ import com.google.firebase.functions.functions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /** Contenedor de dependencias simple (sin Hilt) para mantener el proyecto fácil de compilar. */
 class AppContainer(context: Context) {
     val db = AppDatabase.build(context)
-    val repo = BarrioRepository(db)
     val store = SessionStore(context)
 
     /** Cuenta del dueño (Firebase Auth) y registro de la tienda en Firestore. */
     val authRepo = AuthRepository()
 
-    /** Para trabajo que no depende de una pantalla (copiar perfiles de Firestore a Room). */
+    /** Para trabajo que no depende de una pantalla (escuchas de Firestore, copiar perfiles a Room). */
     val alcance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Perfiles de la tienda: Firestore es la fuente de verdad, Room la copia que leen las pantallas. */
@@ -48,23 +45,54 @@ class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
 
-    /** Caja diaria (apertura, correcciones y cierre). Cada cambio vuelve a programar los avisos de cierre. */
-    val caja = CajaRepository(db, store, alCambiarCaja = { AvisosCierre.reprogramar(appContext) })
-
-    /** Gastos: registrar a mano, editar y anular. */
-    val gastos = GastosRepository(db, store)
-
-    /** Copia a Firestore las ventas registradas a mano (los gastos los copia [gastos]). */
+    /** Ventas y gastos en Firestore (lectura en tiempo real y escrituras). */
     val movimientosRemotos = MovimientosRemotos()
+
+    /** Caja diaria leída de Firestore. Cada cambio vuelve a programar los avisos de cierre. */
+    val caja = CajaRepository(db, store, alcance, remotos = movimientosRemotos, alCambiarCaja = { AvisosCierre.reprogramar(appContext) })
+
+    /** Gastos leídos y escritos en Firestore: registrar a mano, editar y anular. */
+    val gastos = GastosRepository(store, caja, alcance, movimientosRemotos)
+
+    /** Perfiles, clientes y el libro (ventas, fiados y abonos de Room + gastos de Firestore). */
+    val repo = BarrioRepository(db, store.cuenta, gastos.gastos)
+
+    init {
+        // Al entrar con otra cuenta cambia la caja que se mira: los avisos de cierre se recalculan para ella.
+        alcance.launch { store.cuenta.drop(1).collect { AvisosCierre.reprogramar(appContext) } }
+    }
 
     /** Perfil que atiende ahora, leído de Room. */
     suspend fun perfilActivo(): ProfileEntity? = activeProfileId.value?.let { repo.profile(it) }
 
-    /** (tiendaId, perfilId en Firestore) si lo que haga [perfil] se copia a Firestore; null en la demo. */
+    /** (tiendaId, perfilId en Firestore) del perfil, o null si todavía no llegó de Firestore. */
     fun enLaNube(perfil: ProfileEntity?): Pair<String, String>? {
-        val tienda = store.tiendaId ?: return null
+        val tienda = store.tiendaId?.takeIf { it.isNotBlank() } ?: return null
         val remoto = perfil?.remoteId ?: return null
-        return if (store.demo) null else tienda to remoto
+        return tienda to remoto
+    }
+
+    /**
+     * Registra un movimiento en la caja abierta (M1, voz, escáner, fiados):
+     * - Gasto: va a Firestore (GastosRepository), que es donde se leen los gastos.
+     * - Venta, fiado, abono: van a Room unidos a la caja de Firestore; las ventas además se copian a Firestore.
+     */
+    suspend fun registrarMovimiento(m: MovementEntity): Resultado<Unit> {
+        val perfil = perfilActivo() ?: return Resultado.Error("Vuelve a entrar con tu clave para continuar.")
+        if (m.type == MovementType.GASTO.name) {
+            return when (val r = gastos.registrar(ReglasGasto.tipoDe(m.category, m.detail), m.amount, m.title, perfil)) {
+                is Resultado.Ok -> Resultado.Ok(Unit)
+                is Resultado.Error -> r
+            }
+        }
+        val abierta = caja.cajaAbiertaUnaVez() ?: return Resultado.Error("Primero abre la caja del día.", "failed-precondition")
+        val nube = enLaNube(perfil)
+        val tipo = MovementType.valueOf(m.type)
+        val remoteId = if (nube != null && movimientosRemotos.sincroniza(tipo)) movimientosRemotos.nuevoId(nube.first) else null
+        val nuevo = m.copy(id = 0, cajaId = abierta.id, remoteId = remoteId, profileId = perfil.id, profileName = perfil.name)
+        val guardado = nuevo.copy(id = repo.insertMovement(nuevo))
+        if (nube != null && remoteId != null) movimientosRemotos.crear(nube.first, remoteId, guardado, abierta.id, nube.second)
+        return Resultado.Ok(Unit)
     }
 
     /** R5 → R6: la clave de 4 números que se acaba de escribir, mientras se llena "Crea tu perfil". */
@@ -91,10 +119,10 @@ class AppContainer(context: Context) {
     /** Id en Firestore del administrador vigente (lo que piden las funciones como actorPerfilId). */
     fun adminParaCrearPerfiles(): String? = adminVigente()?.remoteId
 
-    /** Empieza a sincronizar los perfiles de la tienda (cuentas reales; la demo es solo local). */
+    /** Empieza a sincronizar los perfiles y la hora de cierre de la tienda. */
     fun sincronizarPerfiles() {
         val tienda = store.tiendaId
-        if (!store.demo && tienda != null && authRepo.correoActual != null) {
+        if (tienda != null && authRepo.correoActual != null) {
             perfiles.sincronizar(tienda)
             caja.sincronizar()
         }
@@ -103,28 +131,14 @@ class AppContainer(context: Context) {
     /** Perfil que está atendiendo ahora. Se pierde al cerrar la app: siempre se pide la clave de nuevo. */
     val activeProfileId = MutableStateFlow<Long?>(null)
 
-    /**
-     * L2 · Ingreso. Devuelve null si entra, o el mensaje de error para mostrar.
-     * - Cuenta demo (tienda@barriogo.com / 123456): datos de ejemplo, solo en el celular.
-     * - Cualquier otra: Firebase Auth (necesita internet la primera vez en cada celular).
-     */
-    suspend fun authenticateStore(email: String, pass: String): String? {
-        if (email.trim().equals(DEMO_CORREO, ignoreCase = true) && pass == DEMO_CONTRASENA) {
-            authRepo.salir()                 // la demo no se mezcla con una cuenta real
-            seedDemoData()
-            store.demo = true
-            return null
-        }
-        return when (val r = authRepo.ingresar(email, pass)) {
-            is Resultado.Ok -> {
-                store.demo = false
-                null
-            }
+    /** L2 · Ingreso con Firebase Auth (necesita internet la primera vez en cada celular). Devuelve el error o null. */
+    suspend fun authenticateStore(email: String, pass: String): String? =
+        when (val r = authRepo.ingresar(email, pass)) {
+            is Resultado.Ok -> null
             is Resultado.Error -> r.mensaje
         }
-    }
 
-    /** "Salir de la tienda": cierra la sesión de Firebase y la de la demo. */
+    /** "Salir de la tienda": cierra la sesión de Firebase. */
     fun signOutOfStore() {
         activeProfileId.value = null
         olvidarAdmin()
@@ -132,106 +146,6 @@ class AppContainer(context: Context) {
         perfiles.detener()
         caja.detener()
         authRepo.salir()
-    }
-
-    companion object {
-        const val DEMO_CORREO = "tienda@barriogo.com"
-        const val DEMO_CONTRASENA = "123456"
-    }
-
-    suspend fun seedDemoData() {
-        if (db.profileDao().count() == 0) {
-            // Configurar datos de la tienda demo
-            if (!store.registered) {
-                store.storeName = "Tienda El Vecino"
-                store.ownerName = "Pedro Gómez"
-                store.email = "tienda@barriogo.com"
-                store.phone = "3101234567"
-                store.category = "Víveres y Abarrotes"
-                store.setPassword("123456")
-                store.registered = true
-            }
-
-            // Crear perfil Administrador (PIN 1234)
-            val adminSalt = Hasher.newSalt()
-            val adminId = db.profileDao().insert(
-                ProfileEntity(
-                    name = "Pedro Gómez",
-                    role = Role.ADMIN.name,
-                    pinHash = Hasher.hash(adminSalt, "1234"),
-                    pinSalt = adminSalt,
-                    biometric = true,
-                )
-            )
-
-            // Crear perfil Vendedor (PIN 1111)
-            val vendSalt = Hasher.newSalt()
-            db.profileDao().insert(
-                ProfileEntity(
-                    name = "Ana Martínez",
-                    role = Role.SELLER.name,
-                    pinHash = Hasher.hash(vendSalt, "1111"),
-                    pinSalt = vendSalt,
-                    biometric = false,
-                )
-            )
-
-            // Clientes frecuentes
-            val c1 = db.clientDao().insert(ClientEntity(name = "Marta Ramírez", phone = "3109876543"))
-            db.clientDao().insert(ClientEntity(name = "Jorge Martínez", phone = "3114567890"))
-            db.clientDao().insert(ClientEntity(name = "Luis Rojas", phone = "3156789012"))
-            db.clientDao().insert(ClientEntity(name = "Pedro Gómez", phone = "3123456789"))
-            db.clientDao().insert(ClientEntity(name = "Rosa Hernández", phone = "3167890123"))
-
-            // Apertura de caja del día
-            val session = repo.openCash(150_000L, "Pedro Gómez")
-
-            // Movimientos iniciales de ejemplo
-            val now = System.currentTimeMillis()
-            repo.insertMovement(
-                MovementEntity(
-                    type = MovementType.VENTA.name,
-                    amount = 8_000L,
-                    title = "2 Gaseosas",
-                    detail = "Venta en efectivo",
-                    quantity = 2,
-                    payMethod = PayMethod.EFECTIVO.name,
-                    profileId = adminId,
-                    profileName = "Pedro Gómez",
-                    sessionId = session.id,
-                    createdAt = now - 3600_000L,
-                )
-            )
-            repo.insertMovement(
-                MovementEntity(
-                    type = MovementType.VENTA.name,
-                    amount = 12_000L,
-                    title = "Pan y leche",
-                    detail = "Venta Nequi/Transferencia",
-                    quantity = 2,
-                    payMethod = PayMethod.TRANSFERENCIA.name,
-                    profileId = adminId,
-                    profileName = "Pedro Gómez",
-                    sessionId = session.id,
-                    createdAt = now - 1800_000L,
-                )
-            )
-            repo.insertMovement(
-                MovementEntity(
-                    type = MovementType.FIADO.name,
-                    amount = 24_000L,
-                    title = "Arroz y leche",
-                    detail = "Fiado para Marta",
-                    quantity = 2,
-                    payMethod = PayMethod.EFECTIVO.name,
-                    clientId = c1,
-                    profileId = adminId,
-                    profileName = "Pedro Gómez",
-                    sessionId = session.id,
-                    createdAt = now - 600_000L,
-                )
-            )
-        }
     }
 }
 

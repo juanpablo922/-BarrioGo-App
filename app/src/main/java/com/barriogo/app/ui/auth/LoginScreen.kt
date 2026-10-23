@@ -24,7 +24,7 @@ fun LoginScreen(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    // null = entra; si no, el mensaje de error (Firebase o cuenta demo).
+                    // null = entra; si no, el mensaje de error de Firebase.
                     return LoginViewModel(authenticate = { email, pass ->
                         app.container.authenticateStore(email, pass)
                     }) as T

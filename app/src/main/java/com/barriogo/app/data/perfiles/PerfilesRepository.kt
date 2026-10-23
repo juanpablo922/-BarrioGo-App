@@ -115,16 +115,10 @@ class PerfilesRepository(
         Resultado.Error(mensajeDeError(e))
     }
 
-    /** Cuenta demo: perfiles solo en el celular, con la misma clave segura. */
-    suspend fun crearLocal(nombre: String, rol: Role, clave: String): Long {
-        val hash = withContext(Dispatchers.Default) { ClaveSegura.hash(clave) }
-        return room.profileDao().insert(ProfileEntity(name = nombre.trim(), role = rol.name, pinHash = hash, pinSalt = ""))
-    }
-
     /**
      * P2 · Cambia nombre y/o rol con la función actualizarPerfil ([actor] = id en Firestore del
      * administrador que lo hace). Solo se envía lo que cambió. Un perfil sin [ProfileEntity.remoteId]
-     * (cuenta demo) cambia solo en el celular.
+     * (versión anterior) cambia solo en el celular.
      */
     suspend fun actualizar(tiendaId: String?, perfil: ProfileEntity, nombre: String, rol: Role, actor: String?): Resultado<Unit> =
         conServidor {
@@ -204,7 +198,7 @@ class PerfilesRepository(
 
         /**
          * L4 · ¿La clave corresponde al perfil? Sin internet.
-         * Perfiles de Firestore y nuevos: PBKDF2 (ClaveSegura). Perfiles demo antiguos: Hasher.
+         * Perfiles de Firestore y nuevos: PBKDF2 (ClaveSegura). Perfiles locales antiguos: Hasher.
          * Un perfil sin clave guardada nunca entra.
          */
         suspend fun claveCorrecta(perfil: ProfileEntity, clave: String): Boolean = withContext(Dispatchers.Default) {

@@ -56,7 +56,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.barriogo.app.data.CashSessionEntity
+import com.barriogo.app.data.caja.Caja
 import com.barriogo.app.domain.Dates
 import com.barriogo.app.domain.MAX_CLOSING_CHANGES
 import com.barriogo.app.domain.Money
@@ -95,6 +95,8 @@ fun CloseCashScreen(onBack: () -> Unit, onGoHome: () -> Unit, onCorregir: () -> 
     var tocado by rememberSaveable { mutableStateOf(false) }
     var confirmarCorreccion by rememberSaveable { mutableStateOf(false) }
     var prellenado by rememberSaveable { mutableStateOf(false) }
+    /** Caja que se acaba de cerrar: su comprobante se muestra cuando Firestore trae el cierre del servidor. */
+    var cerradaId by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Corregir: el formulario arranca con lo que se contó. Sin caja abierta y ya cerrada hoy: comprobante.
     LaunchedEffect(s.cargado) {
@@ -141,6 +143,7 @@ fun CloseCashScreen(onBack: () -> Unit, onGoHome: () -> Unit, onCorregir: () -> 
 
             when {
                 !s.cargado -> Unit
+                paso == 3 && (cerrada == null || (cerradaId != null && cerrada.id != cerradaId)) -> Cargando()
                 paso == 3 && cerrada != null -> Comprobante(cerrada, s.totalesCierre, s.puedeCorregirCierre, s.cambiosCierreRestantes, onGoHome, onCorregir)
                 corregir && !s.puedeCorregirCierre && cerrada != null && paso != 3 -> SinCaja(
                     if (s.session != null) "Ya se abrió otra caja: este cierre no se puede corregir."
@@ -172,7 +175,7 @@ fun CloseCashScreen(onBack: () -> Unit, onGoHome: () -> Unit, onCorregir: () -> 
                 )
                 paso == 2 -> s.totales?.let { t ->
                     Resumen(t, contadoLong ?: 0L) {
-                        vm.cerrar(contadoLong ?: 0L, observaciones) { paso = 3 }
+                        vm.cerrar(contadoLong ?: 0L, observaciones) { id -> cerradaId = id; paso = 3 }
                     }
                 }
             }
@@ -273,7 +276,7 @@ private fun Resumen(t: TotalesCaja, contado: Long, onConfirmar: () -> Unit) {
 /** c4 · Comprobante de cierre. */
 @Composable
 private fun Comprobante(
-    caja: CashSessionEntity,
+    caja: Caja,
     totales: TotalesCaja?,
     puedeCorregir: Boolean,
     restantes: Int,
@@ -433,6 +436,17 @@ private object MilesTransformation : VisualTransformation {
             override fun transformedToOriginal(offset: Int) = digitos.length
         }
         return TransformedText(AnnotatedString(salida), mapa)
+    }
+}
+
+/** Mientras llega de Firestore el cierre que hizo el servidor. */
+@Composable
+private fun Cargando() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            androidx.compose.material3.CircularProgressIndicator(color = FigmaColors.AmarilloBoton)
+            Text("Preparando el comprobante…", color = FigmaColors.Cuerpo, fontSize = 14.sp)
+        }
     }
 }
 

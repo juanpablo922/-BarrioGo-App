@@ -10,6 +10,7 @@ import com.barriogo.app.ai.MovementAgent
 import com.barriogo.app.ai.MovementDraft
 import com.barriogo.app.ai.VoiceRecognizer
 import com.barriogo.app.data.MovementEntity
+import com.barriogo.app.data.auth.Resultado
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,11 +40,9 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
     private var recognizer: VoiceRecognizer? = null
     private var profileId: Long = 0
     private var profileName: String = ""
-    private var sessionId: Long? = null
 
     init {
         viewModelScope.launch { container.activeProfileId.collect { id -> profileId = id ?: 0; profileName = id?.let { container.repo.profile(it)?.name } ?: "" } }
-        viewModelScope.launch { container.repo.activeSession.collect { sessionId = it?.id } }
     }
 
     fun setMode(mode: MovementType) { _state.value = _state.value.copy(mode = mode) }
@@ -88,7 +87,8 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
             if (clientId == null && d.type == MovementType.FIADO && !d.heardClient.isNullOrBlank()) {
                 clientId = container.repo.addClient(d.heardClient, "")
             }
-            container.repo.insertMovement(
+            // Los gastos van a Firestore; ventas y fiados a Room, en la caja abierta.
+            val r = container.registrarMovimiento(
                 MovementEntity(
                     type = d.type.name,
                     amount = d.amount,
@@ -107,11 +107,14 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
                     clientId = clientId,
                     profileId = profileId,
                     profileName = profileName,
-                    sessionId = sessionId,
                     createdAt = System.currentTimeMillis(),
                     extra = "voz",
                 ),
             )
+            if (r is Resultado.Error) {
+                _state.value = _state.value.copy(phase = VoicePhase.PROPOSAL, error = r.mensaje)
+                return@launch
+            }
             _state.value = _state.value.copy(phase = VoicePhase.SAVED)
             onSaved()
         }

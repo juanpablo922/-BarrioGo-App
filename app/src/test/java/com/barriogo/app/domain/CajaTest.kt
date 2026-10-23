@@ -29,6 +29,14 @@ class CajaTest {
         assertEquals(EstadoCaja.CERRADA_HOY, ReglasCaja.estado(hoy, null, hoy))
     }
 
+    @Test fun cadaCuentaTieneSuPropiaCaja() {
+        // Dos cuentas en el mismo celular no comparten datos: la clave es la tienda de Firestore.
+        assertEquals("tienda-A", CuentaLocal.de("tienda-A"))
+        assertEquals("tienda-B", CuentaLocal.de("tienda-B"))
+        assertEquals(CuentaLocal.NINGUNA, CuentaLocal.de(null))
+        assertEquals(CuentaLocal.NINGUNA, CuentaLocal.de(" "))
+    }
+
     @Test fun soloSeRegistraConLaCajaDeHoyAbierta() {
         assertTrue(ReglasCaja.permiteRegistrar(EstadoCaja.ABIERTA))
         EstadoCaja.entries.filter { it != EstadoCaja.ABIERTA }.forEach { assertFalse(ReglasCaja.permiteRegistrar(it)) }

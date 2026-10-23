@@ -55,7 +55,7 @@ object AvisosCierre {
         val app = context.applicationContext as BarrioGoApp
         alcance.launch {
             val c = app.container
-            val abierta = c.db.cashDao().active()
+            val abierta = c.caja.cajaAbiertaUnaVez()  // Firestore (o su caché sin internet)
             val hora = ReglasCaja.hora(c.store.horaCierre.value)
             val cuando = ReglasCaja.proximoAviso(LocalDateTime.now(), hora, abierta?.let(CajaRepository::fechaDe))
             val alarmas = context.getSystemService(AlarmManager::class.java)
@@ -73,7 +73,7 @@ object AvisosCierre {
     /** Lo llama la alarma: muestra el aviso si la caja sigue abierta y programa el siguiente. */
     internal suspend fun avisarSiHaceFalta(context: Context) {
         val c = (context.applicationContext as BarrioGoApp).container
-        val abierta = c.db.cashDao().active()
+        val abierta = c.caja.cajaAbiertaUnaVez()  // Firestore (o su caché sin internet)
         val hora = ReglasCaja.hora(c.store.horaCierre.value)
         val aviso = ReglasCaja.aviso(LocalDateTime.now(), hora, abierta?.let(CajaRepository::fechaDe))
         val texto = ReglasCaja.textoAviso(aviso, hora)

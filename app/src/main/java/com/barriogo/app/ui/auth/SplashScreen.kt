@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
 
 /**
  * L1 · Splash BarrioGo: muestra la portada oficial mientras [decide] revisa la sesión
- * (Firebase o cuenta demo) y navega a donde corresponda.
+ * (Firebase) y navega a donde corresponda.
  */
 @Composable
 fun SplashScreen(decide: suspend () -> Unit) {

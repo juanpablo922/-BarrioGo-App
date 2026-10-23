@@ -12,14 +12,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProfileEntity::class, ClientEntity::class, MovementEntity::class, CashSessionEntity::class, ArqueoEntity::class,
         CashChangeEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun profileDao(): ProfileDao
     abstract fun clientDao(): ClientDao
     abstract fun movementDao(): MovementDao
-    abstract fun cashDao(): CashDao
 
     companion object {
         /** v2 · Los perfiles se unen a su documento de Firestore (Fase 3). */
@@ -61,9 +60,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 · La caja y los gastos se leen de Firestore. Room guarda solo ventas, fiados y abonos,
+         * ahora por tienda (cuenta) y unidos a la caja de Firestore (cajaId). Lo que ya estaba guardado
+         * no se sabe de qué tienda es: queda con cuenta '' y ninguna cuenta lo ve (no se borra).
+         */
+        private val MIGRACION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE movements ADD COLUMN cuenta TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE movements ADD COLUMN cajaId TEXT")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "barriogo.db")
-                .addMigrations(MIGRACION_1_2, MIGRACION_2_3, MIGRACION_3_4)
+                .addMigrations(MIGRACION_1_2, MIGRACION_2_3, MIGRACION_3_4, MIGRACION_4_5)
                 .build()
     }
 }

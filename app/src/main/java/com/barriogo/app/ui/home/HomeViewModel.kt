@@ -3,7 +3,7 @@ package com.barriogo.app.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.barriogo.app.AppContainer
-import com.barriogo.app.data.CashSessionEntity
+import com.barriogo.app.data.caja.Caja
 import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.domain.Dates
@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class HomeUiState(
-    val session: CashSessionEntity? = null,
+    val session: Caja? = null,
     val todayMovements: List<MovementEntity> = emptyList(),
     val fiadoTotal: Long = 0,
     val fiadoClients: Int = 0,
@@ -35,7 +35,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     val profile: StateFlow<ProfileEntity?> = _profile
 
     val state: StateFlow<HomeUiState> = combine(
-        container.repo.activeSession,
+        container.caja.abierta,
         container.repo.movements,
         container.store.hideAmounts,
     ) { session, movements, hide ->

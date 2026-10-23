@@ -246,7 +246,6 @@ fun RegisterMovementScreen(
                         title = conceptText.ifBlank { if (isExpense) expenseKind else selectedType.name },
                         detail = if (isExpense) "Gasto en $expenseKind" else "",
                         payMethod = PayMethod.EFECTIVO,
-                        sessionId = vm.activeSessionId.value,
                         onDone = onSaved
                     )
                 }

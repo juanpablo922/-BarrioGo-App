@@ -1,14 +1,30 @@
 package com.barriogo.app.data
 
-import com.barriogo.app.domain.Dates
+import com.barriogo.app.domain.MovementType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 
-class BarrioRepository(private val db: AppDatabase) {
+/**
+ * Perfiles, clientes y el libro de movimientos.
+ * - [cuenta] = tienda activa: los movimientos de Room se leen y guardan solo para ella.
+ * - [gastos] = gastos de Firestore: el libro los junta con lo que vive en Room (ventas, fiados, abonos).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class BarrioRepository(
+    private val db: AppDatabase,
+    private val cuenta: StateFlow<String>,
+    gastos: Flow<List<MovementEntity>>,
+) {
     val profiles: Flow<List<ProfileEntity>> = db.profileDao().observeAll()
     val clients: Flow<List<ClientEntity>> = db.clientDao().observeAll()
-    val movements: Flow<List<MovementEntity>> = db.movementDao().observeAll()
-    val activeSession: Flow<CashSessionEntity?> = db.cashDao().observeActive()
-    val lastClosed: Flow<CashSessionEntity?> = db.cashDao().observeLastClosed()
+
+    /** Libro completo de la tienda activa, del más nuevo al más viejo. */
+    val movements: Flow<List<MovementEntity>> = combine(cuenta.flatMapLatest { db.movementDao().observeAll(it) }, gastos) { local, nube ->
+        (local.filter { it.type != MovementType.GASTO.name } + nube).sortedWith(compareByDescending<MovementEntity> { it.createdAt }.thenByDescending { it.id })
+    }
 
     suspend fun profile(id: Long): ProfileEntity? = db.profileDao().byId(id)
     suspend fun addProfile(p: ProfileEntity): Long = db.profileDao().insert(p)
@@ -18,8 +34,9 @@ class BarrioRepository(private val db: AppDatabase) {
     suspend fun addClient(name: String, phone: String): Long =
         db.clientDao().insert(ClientEntity(name = name.trim(), phone = phone.trim()))
 
+    /** Movimiento de Room (ventas, fiados, abonos). Los gastos están en GastosRepository. */
     suspend fun movement(id: Long): MovementEntity? = db.movementDao().byId(id)
-    suspend fun insertMovement(m: MovementEntity): Long = db.movementDao().insert(m)
+    suspend fun insertMovement(m: MovementEntity): Long = db.movementDao().insert(m.copy(cuenta = cuenta.value))
     suspend fun updateMovement(m: MovementEntity) = db.movementDao().update(m)
     suspend fun deleteMovement(id: Long) = db.movementDao().delete(id)
     suspend fun voidMovement(id: Long) {
@@ -40,16 +57,4 @@ class BarrioRepository(private val db: AppDatabase) {
             )
         )
     }
-
-    /** Caja de ejemplo de la demo. La apertura, corrección y cierre de verdad están en CajaRepository. */
-    suspend fun openCash(opening: Long, by: String): CashSessionEntity {
-        val ahora = System.currentTimeMillis()
-        val s = CashSessionEntity(
-            openedAt = ahora, openingAmount = opening, openedBy = by, operationDate = Dates.localDate(ahora).toString(),
-        )
-        val id = db.cashDao().insert(s)
-        return s.copy(id = id)
-    }
-
-    suspend fun saveArqueo(a: ArqueoEntity) { db.cashDao().insertArqueo(a) }
 }

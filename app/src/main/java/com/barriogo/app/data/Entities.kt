@@ -16,7 +16,7 @@ data class ProfileEntity(
     val biometric: Boolean = false,
     /**
      * Id del perfil en Firestore (tiendas/{t}/perfiles/{remoteId}). Los perfiles de una cuenta real
-     * son una copia local de Firestore; null = perfil solo local (cuenta demo).
+     * son una copia local de Firestore; null = perfil local de una versión anterior.
      */
     val remoteId: String? = null,
 ) {
@@ -55,12 +55,20 @@ data class MovementEntity(
     val editedAt: Long? = null,
     /** Valor con el que se registró la primera vez, si luego se corrigió. */
     val originalAmount: Long? = null,
-    /** Id en Firestore (tiendas/{t}/movimientos/{remoteId}). null = solo en el celular (demo o fiados). */
+    /** Id en Firestore (tiendas/{t}/movimientos/{remoteId}). null = solo en el celular (fiados y abonos). */
     val remoteId: String? = null,
     /** Tipo de gasto (ExpenseKind.name): PROVEEDOR, SERVICIOS u OTROS. Solo en gastos. */
     val category: String? = null,
+    /** Tienda dueña del movimiento (tiendas/{cuenta}). Cada cuenta del celular ve solo lo suyo. */
+    val cuenta: String = "",
+    /** Caja de Firestore (tiendas/{t}/cajas/{cajaId}) en la que se registró. */
+    val cajaId: String? = null,
 )
 
+/**
+ * Cajas de versiones anteriores (v3–v4), cuando la caja vivía en el celular. Ya no se usan:
+ * la caja se lee de Firestore (data/caja/Caja.kt). La tabla se conserva para no perder datos.
+ */
 @Entity(tableName = "cash_sessions")
 data class CashSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -77,11 +85,9 @@ data class CashSessionEntity(
     val operationDate: String = "",
     /** Correcciones del cierre ya usadas (máximo 2). */
     val closeEditsUsed: Int = 0,
-    /** Id en Firestore (tiendas/{t}/cajas/{remoteId}). null = caja solo en el celular (demo). */
+    /** Id en Firestore (tiendas/{t}/cajas/{remoteId}). */
     val remoteId: String? = null,
-) {
-    val isOpen: Boolean get() = closedAt == null
-}
+)
 
 /**
  * Registro de cada cambio de la apertura (K1, máximo 3) o del cierre (c4, máximo 2).
