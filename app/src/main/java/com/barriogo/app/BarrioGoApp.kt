@@ -11,7 +11,11 @@ import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.data.SessionStore
 import com.barriogo.app.data.auth.AuthRepository
 import com.barriogo.app.data.auth.Resultado
+import com.barriogo.app.data.caja.CajaRepository
+import com.barriogo.app.data.movimientos.GastosRepository
+import com.barriogo.app.data.movimientos.MovimientosRemotos
 import com.barriogo.app.data.perfiles.PerfilesRepository
+import com.barriogo.app.notificaciones.AvisosCierre
 import kotlinx.coroutines.SupervisorJob
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
@@ -42,6 +46,27 @@ class AppContainer(context: Context) {
     /** Perfiles de la tienda: Firestore es la fuente de verdad, Room la copia que leen las pantallas. */
     val perfiles = PerfilesRepository(db, alcance)
 
+    private val appContext = context.applicationContext
+
+    /** Caja diaria (apertura, correcciones y cierre). Cada cambio vuelve a programar los avisos de cierre. */
+    val caja = CajaRepository(db, store, alCambiarCaja = { AvisosCierre.reprogramar(appContext) })
+
+    /** Gastos: registrar a mano, editar y anular. */
+    val gastos = GastosRepository(db, store)
+
+    /** Copia a Firestore las ventas registradas a mano (los gastos los copia [gastos]). */
+    val movimientosRemotos = MovimientosRemotos()
+
+    /** Perfil que atiende ahora, leído de Room. */
+    suspend fun perfilActivo(): ProfileEntity? = activeProfileId.value?.let { repo.profile(it) }
+
+    /** (tiendaId, perfilId en Firestore) si lo que haga [perfil] se copia a Firestore; null en la demo. */
+    fun enLaNube(perfil: ProfileEntity?): Pair<String, String>? {
+        val tienda = store.tiendaId ?: return null
+        val remoto = perfil?.remoteId ?: return null
+        return if (store.demo) null else tienda to remoto
+    }
+
     /** R5 → R6: la clave de 4 números que se acaba de escribir, mientras se llena "Crea tu perfil". */
     var claveEnCurso: String? = null
 
@@ -69,7 +94,10 @@ class AppContainer(context: Context) {
     /** Empieza a sincronizar los perfiles de la tienda (cuentas reales; la demo es solo local). */
     fun sincronizarPerfiles() {
         val tienda = store.tiendaId
-        if (!store.demo && tienda != null && authRepo.correoActual != null) perfiles.sincronizar(tienda)
+        if (!store.demo && tienda != null && authRepo.correoActual != null) {
+            perfiles.sincronizar(tienda)
+            caja.sincronizar()
+        }
     }
 
     /** Perfil que está atendiendo ahora. Se pierde al cerrar la app: siempre se pide la clave de nuevo. */
@@ -102,6 +130,7 @@ class AppContainer(context: Context) {
         olvidarAdmin()
         store.signedIn = false
         perfiles.detener()
+        caja.detener()
         authRepo.salir()
     }
 
@@ -222,5 +251,7 @@ class BarrioGoApp : Application() {
             Firebase.functions(AuthRepository.REGION).useEmulator("10.0.2.2", 5001)
         }
         container = AppContainer(this)
+        AvisosCierre.crearCanal(this)
+        AvisosCierre.reprogramar(this)
     }
 }

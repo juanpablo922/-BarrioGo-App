@@ -1,6 +1,6 @@
 package com.barriogo.app.data
 
-import com.barriogo.app.domain.MAX_OPENING_CHANGES
+import com.barriogo.app.domain.Dates
 import kotlinx.coroutines.flow.Flow
 
 class BarrioRepository(private val db: AppDatabase) {
@@ -41,25 +41,15 @@ class BarrioRepository(private val db: AppDatabase) {
         )
     }
 
+    /** Caja de ejemplo de la demo. La apertura, corrección y cierre de verdad están en CajaRepository. */
     suspend fun openCash(opening: Long, by: String): CashSessionEntity {
-        val s = CashSessionEntity(openedAt = System.currentTimeMillis(), openingAmount = opening, openedBy = by)
+        val ahora = System.currentTimeMillis()
+        val s = CashSessionEntity(
+            openedAt = ahora, openingAmount = opening, openedBy = by, operationDate = Dates.localDate(ahora).toString(),
+        )
         val id = db.cashDao().insert(s)
         return s.copy(id = id)
     }
 
-    /** Cambia la apertura del día. Devuelve null si ya se usaron los 3 cambios permitidos. */
-    suspend fun changeOpening(s: CashSessionEntity, newAmount: Long): CashSessionEntity? {
-        if (s.editsUsed >= MAX_OPENING_CHANGES) return null
-        val updated = s.copy(openingAmount = newAmount, editsUsed = s.editsUsed + 1)
-        db.cashDao().update(updated)
-        return updated
-    }
-
     suspend fun saveArqueo(a: ArqueoEntity) { db.cashDao().insertArqueo(a) }
-
-    suspend fun closeCash(s: CashSessionEntity, counted: Long, expected: Long, by: String, note: String) {
-        db.cashDao().update(
-            s.copy(closedAt = System.currentTimeMillis(), countedAmount = counted, expectedAtClose = expected, closedBy = by, closeNote = note)
-        )
-    }
 }

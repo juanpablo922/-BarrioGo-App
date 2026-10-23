@@ -51,13 +51,18 @@ class MovementsViewModel(private val container: AppContainer) : ViewModel() {
         onDone: () -> Unit,
     ) {
         viewModelScope.launch {
-            container.repo.insertMovement(
-                MovementEntity(
-                    type = type.name, amount = amount, title = title, detail = detail, quantity = quantity,
-                    payMethod = payMethod.name, clientId = clientId, profileId = profileId, profileName = profileName,
-                    sessionId = sessionId, createdAt = System.currentTimeMillis(), extra = extra,
-                ),
+            // Ventas y gastos de una cuenta real también van a Firestore (fiados y abonos todavía no).
+            val remotos = container.movimientosRemotos
+            val nube = container.enLaNube(container.perfilActivo())
+            val caja = sessionId?.let { container.db.cashDao().byId(it) }?.remoteId
+            val remoteId = if (nube != null && caja != null && remotos.sincroniza(type)) remotos.nuevoId(nube.first) else null
+            val m = MovementEntity(
+                type = type.name, amount = amount, title = title, detail = detail, quantity = quantity,
+                payMethod = payMethod.name, clientId = clientId, profileId = profileId, profileName = profileName,
+                sessionId = sessionId, createdAt = System.currentTimeMillis(), extra = extra, remoteId = remoteId,
             )
+            val guardado = m.copy(id = container.repo.insertMovement(m))
+            if (nube != null && caja != null && remoteId != null) remotos.crear(nube.first, remoteId, guardado, caja, nube.second)
             onDone()
         }
     }
@@ -67,9 +72,19 @@ class MovementsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Eliminar: queda en el historial tachado y deja de contar en los totales. */
-    fun voidMovement(id: Long) { viewModelScope.launch { container.repo.voidMovement(id) } }
+    fun voidMovement(id: Long) {
+        viewModelScope.launch {
+            container.repo.voidMovement(id)
+            val remoteId = container.repo.movement(id)?.remoteId ?: return@launch
+            container.enLaNube(container.perfilActivo())?.let { container.movimientosRemotos.anular(it.first, remoteId, it.second) }
+        }
+    }
 
     fun editMovement(id: Long, amount: Long, title: String) {
-        viewModelScope.launch { container.repo.editMovement(id, amount, title) }
+        viewModelScope.launch {
+            container.repo.editMovement(id, amount, title)
+            val m = container.repo.movement(id)?.takeIf { it.remoteId != null } ?: return@launch
+            container.enLaNube(container.perfilActivo())?.let { container.movimientosRemotos.editar(it.first, m, it.second) }
+        }
     }
 }
