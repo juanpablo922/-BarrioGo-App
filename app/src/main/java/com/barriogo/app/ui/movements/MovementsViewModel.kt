@@ -66,5 +66,10 @@ class MovementsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { onDone(container.repo.addClient(name, phone)) }
     }
 
+    /** Eliminar: queda en el historial tachado y deja de contar en los totales. */
     fun voidMovement(id: Long) { viewModelScope.launch { container.repo.voidMovement(id) } }
+
+    fun editMovement(id: Long, amount: Long, title: String) {
+        viewModelScope.launch { container.repo.editMovement(id, amount, title) }
+    }
 }

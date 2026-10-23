@@ -58,7 +58,7 @@ class RecuperarViewModel(private val repo: AuthRepository, correoInicial: String
         val s = _estado.value
         if (s.cargando || s.reenviarEn > 0) return
         if (!Validaciones.correoValido(s.correo)) {
-            _estado.update { it.copy(error = "Escribe un correo válido") }
+            _estado.update { it.copy(error = "Ingresa un correo electrónico válido") }
             return
         }
         viewModelScope.launch {

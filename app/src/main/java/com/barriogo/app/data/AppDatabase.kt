@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ProfileEntity::class, ClientEntity::class, MovementEntity::class, CashSessionEntity::class, ArqueoEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,9 +26,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 · Editar y eliminar movimientos sin perder el historial (cuándo y valor original). */
+        private val MIGRACION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE movements ADD COLUMN voidedAt INTEGER")
+                db.execSQL("ALTER TABLE movements ADD COLUMN editedAt INTEGER")
+                db.execSQL("ALTER TABLE movements ADD COLUMN originalAmount INTEGER")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "barriogo.db")
-                .addMigrations(MIGRACION_1_2)
+                .addMigrations(MIGRACION_1_2, MIGRACION_2_3)
                 .build()
     }
 }

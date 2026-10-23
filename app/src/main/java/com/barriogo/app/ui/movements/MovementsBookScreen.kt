@@ -12,6 +12,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +34,7 @@ import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.theme.BarrioColors
 
 data class MovementItem(
+    val movement: com.barriogo.app.data.MovementEntity,
     val title: String,
     val timeKind: String,
     val amount: String,
@@ -47,6 +52,7 @@ fun MovementsBookScreen(onBack: () -> Unit) {
 
     var selectedTimeFilter by remember { mutableStateOf("Hoy") }
     var selectedTypeFilter by remember { mutableStateOf("Todos") }
+    var editando by remember { mutableStateOf<com.barriogo.app.data.MovementEntity?>(null) }
 
     val now = remember { System.currentTimeMillis() }
 
@@ -80,9 +86,15 @@ fun MovementsBookScreen(onBack: () -> Unit) {
                 "ABONO" -> "Abono"
                 else -> m.type
             }
+            val estado = when {
+                m.voided -> " · Eliminado" + (m.voidedAt?.let { " " + Dates.time(it) } ?: "")
+                m.editedAt != null -> " · Editado" + (m.originalAmount?.let { " (antes " + Money.cop(it) + ")" } ?: "")
+                else -> ""
+            }
             MovementItem(
+                movement = m,
                 title = m.label(),
-                timeKind = "${Dates.time(m.createdAt)} · $typeLabel",
+                timeKind = "${Dates.time(m.createdAt)} · $typeLabel$estado",
                 amount = formatted,
                 type = typeLabel,
                 isPositive = isIncome
@@ -91,24 +103,25 @@ fun MovementsBookScreen(onBack: () -> Unit) {
     }
 
     val summaryText = remember(timeFiltered, selectedTypeFilter) {
+        val vigentes = timeFiltered.filter { !it.voided }
         when (selectedTypeFilter) {
             "Ventas" -> {
-                val count = timeFiltered.count { it.type == "VENTA" }
-                val total = timeFiltered.filter { it.type == "VENTA" }.sumOf { it.amount }
+                val count = vigentes.count { it.type == "VENTA" }
+                val total = vigentes.filter { it.type == "VENTA" }.sumOf { it.amount }
                 "$count ventas  ·  Total: + ${Money.cop(total)}"
             }
             "Gastos" -> {
-                val count = timeFiltered.count { it.type == "GASTO" }
-                val total = timeFiltered.filter { it.type == "GASTO" }.sumOf { it.amount }
+                val count = vigentes.count { it.type == "GASTO" }
+                val total = vigentes.filter { it.type == "GASTO" }.sumOf { it.amount }
                 "$count gastos  ·  Total: - ${Money.cop(total)}"
             }
             "Fiados" -> {
-                val count = timeFiltered.count { it.type == "FIADO" }
-                val total = timeFiltered.filter { it.type == "FIADO" }.sumOf { it.amount }
+                val count = vigentes.count { it.type == "FIADO" }
+                val total = vigentes.filter { it.type == "FIADO" }.sumOf { it.amount }
                 "$count fiados  ·  Te deben: ${Money.cop(total)}"
             }
             else -> {
-                val count = timeFiltered.size
+                val count = vigentes.size
                 val neto = timeFiltered.sumOf { it.cashDelta() }
                 "$count movimientos  ·  Neto: ${Money.cop(neto)}"
             }
@@ -230,10 +243,14 @@ fun MovementsBookScreen(onBack: () -> Unit) {
                         }
                     }
                 } else {
-                    items(filteredList) { item ->
+                    items(filteredList, key = { it.movement.id }) { item ->
+                        val anulado = item.movement.voided
+                        val tachado = if (anulado) TextDecoration.LineThrough else TextDecoration.None
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .alpha(if (anulado) 0.5f else 1f)
+                                .testTag("movement_card_${item.movement.id}")
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(BarrioColors.CardBg)
                                 .border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(16.dp))
@@ -244,7 +261,7 @@ fun MovementsBookScreen(onBack: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                     Box(
                                         modifier = Modifier
                                             .size(38.dp)
@@ -281,13 +298,15 @@ fun MovementsBookScreen(onBack: () -> Unit) {
                                             item.title,
                                             color = BarrioColors.TextPrimary,
                                             fontSize = 15.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                            fontWeight = FontWeight.SemiBold,
+                                            textDecoration = tachado
                                         )
                                         Spacer(Modifier.height(2.dp))
                                         Text(
                                             item.timeKind,
-                                            color = BarrioColors.TextHint,
-                                            fontSize = 12.sp
+                                            color = if (anulado) BarrioColors.Error else BarrioColors.TextHint,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (anulado) FontWeight.SemiBold else FontWeight.Normal
                                         )
                                     }
                                 }
@@ -300,8 +319,24 @@ fun MovementsBookScreen(onBack: () -> Unit) {
                                         else -> BarrioColors.Yellow
                                     },
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    textDecoration = tachado
                                 )
+
+                                // Lápiz amarillo: corregir o eliminar (lo eliminado ya no se edita)
+                                if (!anulado) {
+                                    Box(
+                                        Modifier
+                                            .padding(start = 6.dp)
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .clickable { editando = item.movement }
+                                            .testTag("edit_movement_${item.movement.id}"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Filled.Edit, "Editar o eliminar", tint = Color(0xFFF2C849), modifier = Modifier.size(20.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -309,6 +344,15 @@ fun MovementsBookScreen(onBack: () -> Unit) {
 
                 item { Spacer(Modifier.height(90.dp)) }
             }
+        }
+
+        editando?.let { m ->
+            EditMovementDialog(
+                movement = m,
+                onSave = { monto, concepto -> vm.editMovement(m.id, monto, concepto) },
+                onDelete = { vm.voidMovement(m.id) },
+                onDismiss = { editando = null },
+            )
         }
     }
 }

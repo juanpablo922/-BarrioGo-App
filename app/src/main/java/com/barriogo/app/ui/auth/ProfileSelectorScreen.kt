@@ -37,6 +37,7 @@ import com.barriogo.app.domain.Role
 import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.components.NumericKeypad
 import com.barriogo.app.ui.components.PinSquares
+import com.barriogo.app.ui.components.LoadingOverlay
 import com.barriogo.app.ui.theme.BarrioColors
 
 /** Lo que se quería hacer cuando se pidió la clave de un administrador. */
@@ -227,6 +228,8 @@ fun ProfileSelectorScreen(
             )
         }
     }
+
+    vm.ocupado.collectAsState().value?.let { LoadingOverlay(it) }
 
     // Si el administrador que abrió la edición se quitó a sí mismo, se sale del modo editar.
     LaunchedEffect(editando, profiles) {

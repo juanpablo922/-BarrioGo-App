@@ -12,8 +12,8 @@ val Accent = Color(0xFFF2C849)          // amarillo de acción principal
 val OnAccent = Color(0xFF2A2105)        // texto sobre amarillo
 
 val TextPrimary = Color(0xFFFFFFFF)
-val TextMuted = Color(0xFFBFD9CB)       // texto secundario sobre verde oscuro
-val TextFaint = Color(0xFF8FAE9E)
+val TextMuted = Color(0xFFE3ECE6)       // texto secundario sobre verde oscuro
+val TextFaint = Color(0xFFC5D3CA)
 
 val PositiveGreen = Color(0xFF7FD9A6)   // entradas, "+"
 val NegativeCoral = Color(0xFFF3A28C)   // salidas, "-"

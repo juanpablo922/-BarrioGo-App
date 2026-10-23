@@ -49,6 +49,12 @@ data class MovementEntity(
     val voided: Boolean = false,
     /** JSON con el detalle de una factura escaneada (proveedor, número, conceptos). */
     val extra: String = "",
+    /** Cuándo se eliminó (anuló). Sigue en el historial, tachado, pero ya no cuenta en los totales. */
+    val voidedAt: Long? = null,
+    /** Última vez que se corrigió el valor o el concepto. */
+    val editedAt: Long? = null,
+    /** Valor con el que se registró la primera vez, si luego se corrigió. */
+    val originalAmount: Long? = null,
 )
 
 @Entity(tableName = "cash_sessions")

@@ -7,6 +7,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -51,7 +53,8 @@ fun BarrioGoNavGraph() {
     Scaffold(
         bottomBar = {
             if (currentRoute in BOTTOM_ROUTES) {
-                val dest = when (currentRoute) {
+                // Con la ventana "¿Cómo quieres registrar?" abierta, el resaltado va sobre Registrar
+                val dest = if (showRegisterSheet) BottomDest.REGISTRAR else when (currentRoute) {
                     Routes.HOME -> BottomDest.INICIO
                     Routes.MOVEMENTS_BOOK -> BottomDest.MOVIMIENTOS
                     Routes.REGISTER_MOVEMENT -> BottomDest.REGISTRAR
@@ -80,7 +83,12 @@ fun BarrioGoNavGraph() {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            NavHost(navController = nav, startDestination = Routes.SPLASH) {
+            // Con el menú "¿Cómo quieres registrar?" abierto, la pantalla de fondo se ve desenfocada (Android 12+)
+            NavHost(
+                navController = nav,
+                startDestination = Routes.SPLASH,
+                modifier = if (showRegisterSheet) Modifier.blur(12.dp) else Modifier,
+            ) {
 
                 composable(Routes.SPLASH) {
                     SplashScreen(decide = {
@@ -151,7 +159,8 @@ fun BarrioGoNavGraph() {
                     }
                     val perfiles by vm.profiles.collectAsState(initial = emptyList())
                     val adminLleno = perfiles.count { it.isAdmin } >= com.barriogo.app.domain.CuposPerfiles.MAXIMO_ADMINISTRADORES
-                    CreateProfileScreen(adminLleno = adminLleno) { name, role ->
+                    val ocupado by vm.ocupado.collectAsState()
+                    CreateProfileScreen(adminLleno = adminLleno, cargando = ocupado) { name, role ->
                         vm.crearPerfil(
                             name,
                             role,

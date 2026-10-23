@@ -45,7 +45,7 @@ fun AmountField(value: Long, onValueChange: (Long) -> Unit, modifier: Modifier =
 }
 
 /** Muestra los dígitos escritos con separador de miles y el signo $ delante, sin tocar el valor real. */
-private class MoneyVisualTransformation : androidx.compose.ui.text.input.VisualTransformation {
+internal class MoneyVisualTransformation : androidx.compose.ui.text.input.VisualTransformation {
     override fun filter(text: androidx.compose.ui.text.AnnotatedString): androidx.compose.ui.text.input.TransformedText {
         val digits = text.text
         val grouped = if (digits.isEmpty()) "" else Money.group(digits.toLong())
