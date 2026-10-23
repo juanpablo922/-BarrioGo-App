@@ -18,8 +18,12 @@ object Routes {
     // Núcleo
     const val HOME = "home"
     const val CASH = "cash"
-    const val OPEN_CASH = "open_cash"
-    const val CLOSE_CASH = "close_cash"
+    /** K0 / K1. corregir=true entra directo a "Corregir la apertura". */
+    const val OPEN_CASH = "open_cash?corregir={corregir}"
+    fun openCash(corregir: Boolean = false) = "open_cash?corregir=$corregir"
+    /** c2–c4. corregir=true corrige el último cierre (máximo 2 veces). */
+    const val CLOSE_CASH = "close_cash?corregir={corregir}"
+    fun closeCash(corregir: Boolean = false) = "close_cash?corregir=$corregir"
     const val ARQUEO = "arqueo"
 
     const val REGISTER_MOVEMENT = "register_movement"
@@ -27,8 +31,12 @@ object Routes {
     const val MOVEMENT_DETAIL = "movement_detail/{id}"
     fun movementDetail(id: Long) = "movement_detail/$id"
 
-    const val EXPENSES = "expenses"
-    const val REGISTER_EXPENSE = "register_expense"
+    /** G1. aviso = mensaje corto al volver de guardar ("Gasto guardado…"). */
+    const val EXPENSES = "expenses?aviso={aviso}"
+    fun expenses(aviso: String? = null) = if (aviso == null) "expenses" else "expenses?aviso=${android.net.Uri.encode(aviso)}"
+    /** G2. Sin id registra; con id edita ese gasto. */
+    const val REGISTER_EXPENSE = "register_expense?id={id}"
+    fun registerExpense(id: Long? = null) = if (id == null) "register_expense" else "register_expense?id=$id"
 
     const val FIADOS = "fiados"
     const val NEW_FIADO = "new_fiado"

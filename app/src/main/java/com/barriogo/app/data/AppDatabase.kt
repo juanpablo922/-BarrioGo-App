@@ -8,8 +8,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ProfileEntity::class, ClientEntity::class, MovementEntity::class, CashSessionEntity::class, ArqueoEntity::class],
-    version = 3,
+    entities = [
+        ProfileEntity::class, ClientEntity::class, MovementEntity::class, CashSessionEntity::class, ArqueoEntity::class,
+        CashChangeEntity::class,
+    ],
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -35,9 +38,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 · Caja diaria (día de operación, correcciones del cierre y su registro) y sincronización
+         * de cajas y gastos con Firestore (remoteId). Las cajas viejas toman el día en que se abrieron.
+         */
+        private val MIGRACION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cash_sessions ADD COLUMN operationDate TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE cash_sessions ADD COLUMN closeEditsUsed INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE cash_sessions ADD COLUMN remoteId TEXT")
+                db.execSQL(
+                    "UPDATE cash_sessions SET operationDate = strftime('%Y-%m-%d', openedAt / 1000, 'unixepoch', 'localtime')"
+                )
+                db.execSQL("ALTER TABLE movements ADD COLUMN remoteId TEXT")
+                db.execSQL("ALTER TABLE movements ADD COLUMN category TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS cash_changes (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, sessionId INTEGER NOT NULL, kind TEXT NOT NULL, " +
+                        "number INTEGER NOT NULL, `before` INTEGER NOT NULL, `after` INTEGER NOT NULL, note TEXT NOT NULL, " +
+                        "`by` TEXT NOT NULL, `at` INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "barriogo.db")
-                .addMigrations(MIGRACION_1_2, MIGRACION_2_3)
+                .addMigrations(MIGRACION_1_2, MIGRACION_2_3, MIGRACION_3_4)
                 .build()
     }
 }

@@ -55,6 +55,10 @@ data class MovementEntity(
     val editedAt: Long? = null,
     /** Valor con el que se registró la primera vez, si luego se corrigió. */
     val originalAmount: Long? = null,
+    /** Id en Firestore (tiendas/{t}/movimientos/{remoteId}). null = solo en el celular (demo o fiados). */
+    val remoteId: String? = null,
+    /** Tipo de gasto (ExpenseKind.name): PROVEEDOR, SERVICIOS u OTROS. Solo en gastos. */
+    val category: String? = null,
 )
 
 @Entity(tableName = "cash_sessions")
@@ -69,6 +73,32 @@ data class CashSessionEntity(
     val expectedAtClose: Long? = null,
     val closedBy: String? = null,
     val closeNote: String = "",
+    /** Día de la caja ("2026-10-23"). La caja es diaria: una por día. */
+    val operationDate: String = "",
+    /** Correcciones del cierre ya usadas (máximo 2). */
+    val closeEditsUsed: Int = 0,
+    /** Id en Firestore (tiendas/{t}/cajas/{remoteId}). null = caja solo en el celular (demo). */
+    val remoteId: String? = null,
+) {
+    val isOpen: Boolean get() = closedAt == null
+}
+
+/**
+ * Registro de cada cambio de la apertura (K1, máximo 3) o del cierre (c4, máximo 2).
+ * Nada se sobrescribe sin dejar rastro: quién, cuándo, valor anterior y nuevo.
+ */
+@Entity(tableName = "cash_changes")
+data class CashChangeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: Long,
+    /** "APERTURA" o "CIERRE". */
+    val kind: String,
+    val number: Int,
+    val before: Long,
+    val after: Long,
+    val note: String = "",
+    val by: String,
+    val at: Long,
 )
 
 @Entity(tableName = "arqueos")

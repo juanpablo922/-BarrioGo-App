@@ -22,12 +22,22 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.barriogo.app.domain.AvisoCierre
 import com.barriogo.app.domain.Dates
+import com.barriogo.app.domain.EstadoCaja
+import com.barriogo.app.ui.cash.CashViewModel
+import com.barriogo.app.ui.cash.TarjetaCifra
+import com.barriogo.app.ui.cash.TarjetaSaldo
+import com.barriogo.app.ui.cash.FranjaAviso
+import com.barriogo.app.ui.components.BotonFigma
 import com.barriogo.app.domain.Money
 import com.barriogo.app.domain.cashDelta
 import com.barriogo.app.domain.label
 import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.theme.BarrioColors
+import com.barriogo.app.ui.theme.FigmaColors
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 
 /**
  * H1 · Inicio: Saldo en caja, Entró/Salió, Fiados y Últimos movimientos (Figma exacto).
@@ -37,11 +47,16 @@ fun HomeScreen(
     onSeeAllMovements: () -> Unit,
     onGoFiados: () -> Unit,
     onSwitchProfile: () -> Unit,
-    onEditCash: () -> Unit = {}
+    onEditCash: () -> Unit = {},
+    onOpenCash: () -> Unit = {},
+    onCloseCash: () -> Unit = {},
+    onGoExpenses: () -> Unit = {},
 ) {
     val vm = barrioViewModel { HomeViewModel(it) }
     val s by vm.state.collectAsState()
     val profile by vm.profile.collectAsState()
+    // Saldo, entradas y salidas salen de la caja abierta (no de "lo de hoy"), igual que en Caja y en el cierre.
+    val caja by barrioViewModel { CashViewModel(it) }.state.collectAsState()
 
     LazyColumn(
         Modifier
@@ -89,7 +104,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "Administrador · ${Dates.longDay()}",
+                            "${if (profile?.isAdmin == false) "Vendedor" else "Administrador"} · ${Dates.longDay()}",
                             color = BarrioColors.TextHint,
                             fontSize = 13.sp
                         )
@@ -127,126 +142,56 @@ fun HomeScreen(
             }
         }
 
-        // Card 1: Saldo en caja hoy
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(BarrioColors.CardBg)
-                    .border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(20.dp))
-                    .padding(20.dp)
-                    .testTag("saldo_caja_card")
-            ) {
-                Column {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Saldo en caja hoy",
-                            color = BarrioColors.TextHint,
-                            fontSize = 14.sp
-                        )
-                        IconButton(
-                            onClick = onEditCash,
-                            modifier = Modifier.size(28.dp).testTag("edit_cash_pencil_button")
-                        ) {
-                            Icon(
-                                Icons.Outlined.Edit,
-                                contentDescription = "Editar saldo",
-                                tint = BarrioColors.Yellow,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-
-                    Text(
-                        if (s.hideAmounts) Money.HIDDEN else Money.cop(s.saldoHoy),
-                        color = BarrioColors.Yellow,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Text(
-                        "Apertura del día: ${if (s.hideAmounts) Money.HIDDEN else Money.cop(s.session?.openingAmount ?: 0L)}",
-                        color = BarrioColors.TextHint,
-                        fontSize = 13.sp
-                    )
+        // Avisos de la caja: hora de cierre, caja de ayer abierta o caja sin abrir
+        caja.textoAviso?.let { texto ->
+            item { FranjaAviso(texto, vencido = caja.aviso is AvisoCierre.Vencido, esAdmin = caja.esAdmin, onCerrar = onCloseCash) }
+        }
+        if (caja.cargado && caja.estado == EstadoCaja.ABIERTA_DIA_ANTERIOR && caja.session != null) {
+            item {
+                FranjaAviso(
+                    "La caja del ${Dates.day(caja.session!!.openedAt)} sigue abierta. Ciérrala para abrir la de hoy.",
+                    vencido = true, esAdmin = caja.esAdmin, onCerrar = onCloseCash,
+                )
+            }
+        }
+        if (caja.cargado && caja.estado == EstadoCaja.SIN_ABRIR) {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(BarrioColors.CardBg)
+                        .border(1.dp, BarrioColors.YellowStroke, RoundedCornerShape(20.dp)).padding(20.dp).testTag("open_cash_card"),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Abre la caja del día", color = BarrioColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Sin la apertura no se pueden registrar ventas, gastos ni fiados.", color = BarrioColors.TextHint, fontSize = 14.sp)
+                    BotonFigma("Abrir caja", modifier = Modifier.testTag("open_cash_home"), onClick = onOpenCash)
                 }
             }
         }
 
-        // Row of Two Stats Cards: Entró & Salió
+        // Card 1: Saldo en caja hoy (H1; con la apertura bloqueada: candado y "Sin más cambios hoy")
         item {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Entró
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(BarrioColors.CardBg)
-                        .border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(18.dp))
-                        .padding(16.dp)
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.ArrowUpward,
-                                contentDescription = null,
-                                tint = BarrioColors.PositiveGreen,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Entró", color = BarrioColors.TextHint, fontSize = 13.sp)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            if (s.hideAmounts) Money.HIDDEN else Money.cop(s.entradas),
-                            color = BarrioColors.TextPrimary,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+            TarjetaSaldo(
+                etiqueta = "Saldo en caja hoy",
+                saldo = if (s.hideAmounts) Money.HIDDEN else Money.cop(caja.saldo),
+                apertura = "Apertura del día: ${if (s.hideAmounts) Money.HIDDEN else Money.cop(caja.session?.openingAmount ?: 0L)}",
+                cambiosRestantes = caja.session?.let { caja.editsLeft },
+                onEditar = onEditCash,
+                modifier = Modifier.testTag("saldo_caja_card"),
+            )
+        }
 
-                // Salió
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(BarrioColors.CardBg)
-                        .border(1.dp, BarrioColors.CardSubtle, RoundedCornerShape(18.dp))
-                        .padding(16.dp)
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.ArrowDownward,
-                                contentDescription = null,
-                                tint = BarrioColors.NegativeRed,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Salió", color = BarrioColors.TextHint, fontSize = 13.sp)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            if (s.hideAmounts) Money.HIDDEN else Money.cop(s.salidas),
-                            color = BarrioColors.TextPrimary,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+        // Entró y Salió (Salió es un enlace a G1 · Gastos)
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TarjetaCifra(
+                    "Entró", if (s.hideAmounts) Money.HIDDEN else Money.cop(caja.entradas),
+                    Icons.AutoMirrored.Filled.TrendingUp, FigmaColors.Verde, Modifier.weight(1f),
+                )
+                TarjetaCifra(
+                    "Salió", if (s.hideAmounts) Money.HIDDEN else Money.cop(caja.salidas),
+                    Icons.AutoMirrored.Filled.TrendingDown, FigmaColors.Naranja, Modifier.weight(1f).testTag("salio_card"),
+                    onClick = onGoExpenses,
+                )
             }
         }
 

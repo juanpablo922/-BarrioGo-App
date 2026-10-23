@@ -1,6 +1,7 @@
 package com.barriogo.app.data
 
 import android.content.Context
+import com.barriogo.app.domain.ReglasCaja
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -15,6 +16,14 @@ class SessionStore(context: Context) {
     private val _hide = MutableStateFlow(sp.getBoolean("hide", false))
     val hideAmounts: StateFlow<Boolean> = _hide
     fun setHide(v: Boolean) { sp.edit().putBoolean("hide", v).apply(); _hide.value = v }
+
+    /** Hora de cierre de la caja ("20:00"). Desde ahí salen los avisos. La copia de Firestore es tiendas/{t}.horaCierre. */
+    private val _horaCierre = MutableStateFlow(sp.getString("horaCierre", null) ?: ReglasCaja.HORA_CIERRE_POR_DEFECTO)
+    val horaCierre: StateFlow<String> = _horaCierre
+    fun setHoraCierre(v: String) {
+        if (!ReglasCaja.horaValida(v)) return
+        sp.edit().putString("horaCierre", v).apply(); _horaCierre.value = v
+    }
 
     var registered: Boolean
         get() = sp.getBoolean("registered", false)

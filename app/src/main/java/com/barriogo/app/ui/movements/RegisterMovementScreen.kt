@@ -55,6 +55,7 @@ fun RegisterMovementScreen(
     onSaved: () -> Unit,
     onGoVoice: (MovementType) -> Unit,
     onGoScan: () -> Unit,
+    onGoExpense: (() -> Unit)? = null,
     onBack: () -> Unit = onSaved
 ) {
     val vm = barrioViewModel { MovementsViewModel(it) }
@@ -133,7 +134,8 @@ fun RegisterMovementScreen(
                         iconTint = Amarillo,
                         isSelected = selectedType == MovementType.GASTO,
                         modifier = Modifier.weight(1f).testTag("type_gasto"),
-                        onClick = { selectedType = MovementType.GASTO }
+                        // Los gastos se registran en G2 (con sus validaciones y la caja abierta).
+                        onClick = { onGoExpense?.invoke() ?: run { selectedType = MovementType.GASTO } }
                     )
                     TypeSelectionCard(
                         title = "Fiado",

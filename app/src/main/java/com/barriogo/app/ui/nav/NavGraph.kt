@@ -20,10 +20,14 @@ import androidx.navigation.NavType
 import android.widget.Toast
 import com.barriogo.app.BarrioGoApp
 import com.barriogo.app.data.auth.Destino
+import com.barriogo.app.domain.EstadoCaja
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.ui.auth.*
+import com.barriogo.app.ui.cash.CajaRequerida
 import com.barriogo.app.ui.cash.CashScreen
+import com.barriogo.app.ui.cash.CloseCashScreen
 import com.barriogo.app.ui.cash.OpenCashScreen
+import kotlinx.coroutines.launch
 import com.barriogo.app.ui.components.BarrioBottomBar
 import com.barriogo.app.ui.components.BottomDest
 import com.barriogo.app.ui.components.RegisterChooserSheet
@@ -38,7 +42,7 @@ import com.barriogo.app.ui.movements.RegisterMovementScreen
 import com.barriogo.app.ui.scan.ScanInvoiceScreen
 import com.barriogo.app.ui.voice.VoiceCaptureScreen
 
-private val BOTTOM_ROUTES = setOf(Routes.HOME, Routes.MOVEMENTS_BOOK, Routes.REGISTER_MOVEMENT, Routes.CASH)
+private val BOTTOM_ROUTES = setOf(Routes.HOME, Routes.MOVEMENTS_BOOK, Routes.REGISTER_MOVEMENT, Routes.CASH, Routes.EXPENSES)
 
 /** Grafo de navegación completo con el flujo exacto del prototipo Figma. */
 @Composable
@@ -48,6 +52,16 @@ fun BarrioGoNavGraph() {
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
 
+    /** Sin la caja de hoy abierta no se registran ventas, gastos ni fiados. */
+    @Composable
+    fun ConCaja(titulo: String, contenido: @Composable () -> Unit) = CajaRequerida(
+        titulo = titulo,
+        onBack = { nav.popBackStack() },
+        onAbrirCaja = { nav.navigate(Routes.openCash()) },
+        onCerrarCaja = { nav.navigate(Routes.closeCash()) },
+        contenido = contenido,
+    )
+
     var showRegisterSheet by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -56,7 +70,7 @@ fun BarrioGoNavGraph() {
                 // Con la ventana "¿Cómo quieres registrar?" abierta, el resaltado va sobre Registrar
                 val dest = if (showRegisterSheet) BottomDest.REGISTRAR else when (currentRoute) {
                     Routes.HOME -> BottomDest.INICIO
-                    Routes.MOVEMENTS_BOOK -> BottomDest.MOVIMIENTOS
+                    Routes.MOVEMENTS_BOOK, Routes.EXPENSES -> BottomDest.MOVIMIENTOS
                     Routes.REGISTER_MOVEMENT -> BottomDest.REGISTRAR
                     else -> BottomDest.CAJA
                 }
@@ -196,9 +210,19 @@ fun BarrioGoNavGraph() {
                     arguments = listOf(navArgument("profileId") { type = NavType.LongType }),
                 ) { entry ->
                     val id = entry.arguments?.getLong("profileId") ?: 0L
+                    val alcance = rememberCoroutineScope()
                     PinLoginScreen(
                         profileId = id,
-                        onSuccess = { nav.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } } },
+                        onSuccess = {
+                            // El día empieza abriendo la caja: si hoy no hay caja, se pide la apertura (K0).
+                            alcance.launch {
+                                val estado = app.container.caja.estadoActual()
+                                nav.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
+                                if (estado != EstadoCaja.ABIERTA && estado != EstadoCaja.CERRADA_HOY) {
+                                    nav.navigate(Routes.openCash())
+                                }
+                            }
+                        },
                         onBack = { nav.popBackStack() },
                     )
                 }
@@ -208,40 +232,92 @@ fun BarrioGoNavGraph() {
                         onSeeAllMovements = { nav.navigate(Routes.MOVEMENTS_BOOK) },
                         onGoFiados = { nav.navigate(Routes.FIADOS) },
                         onSwitchProfile = { nav.navigate(Routes.PROFILE_SELECTOR) },
-                        onEditCash = { nav.navigate(Routes.CASH) }
+                        onEditCash = { nav.navigate(Routes.openCash(corregir = true)) },
+                        onOpenCash = { nav.navigate(Routes.openCash()) },
+                        onCloseCash = { nav.navigate(Routes.closeCash()) },
+                        onGoExpenses = { nav.navigate(Routes.expenses()) },
                     )
                 }
 
                 composable(Routes.CASH) {
                     CashScreen(
-                        onOpenCash = { nav.navigate(Routes.OPEN_CASH) },
-                        onSeeAllMovements = { nav.navigate(Routes.MOVEMENTS_BOOK) }
+                        onOpenCash = { nav.navigate(Routes.openCash()) },
+                        onSeeAllMovements = { nav.navigate(Routes.MOVEMENTS_BOOK) },
+                        onEditOpening = { nav.navigate(Routes.openCash(corregir = true)) },
+                        onCloseCash = { nav.navigate(Routes.closeCash()) },
+                        onSeeClosing = { nav.navigate(Routes.closeCash()) },
+                        onCorrectClosing = { nav.navigate(Routes.closeCash(corregir = true)) },
+                        onGoExpenses = { nav.navigate(Routes.expenses()) },
                     )
                 }
 
-                composable(Routes.OPEN_CASH) {
-                    OpenCashScreen(onOpened = { nav.popBackStack() })
+                composable(
+                    Routes.OPEN_CASH,
+                    arguments = listOf(navArgument("corregir") { type = NavType.BoolType; defaultValue = false }),
+                ) { entry ->
+                    OpenCashScreen(
+                        onBack = { nav.popBackStack() },
+                        onGoCash = { nav.navigate(Routes.CASH) { popUpTo(Routes.HOME) } },
+                        onGoClose = { nav.navigate(Routes.closeCash()) { popUpTo(Routes.HOME) } },
+                        corregir = entry.arguments?.getBoolean("corregir") ?: false,
+                    )
+                }
+
+                composable(
+                    Routes.CLOSE_CASH,
+                    arguments = listOf(navArgument("corregir") { type = NavType.BoolType; defaultValue = false }),
+                ) { entry ->
+                    CloseCashScreen(
+                        onBack = { nav.popBackStack() },
+                        onGoHome = { nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = true } } },
+                        onCorregir = { nav.navigate(Routes.closeCash(corregir = true)) { popUpTo(Routes.HOME) } },
+                        corregir = entry.arguments?.getBoolean("corregir") ?: false,
+                    )
                 }
 
                 composable(Routes.REGISTER_MOVEMENT) {
-                    RegisterMovementScreen(
-                        onSaved = { nav.popBackStack(Routes.HOME, false) },
-                        onGoVoice = { mode -> nav.navigate(Routes.voiceCapture(mode.name)) },
-                        onGoScan = { nav.navigate(Routes.SCAN_INVOICE) },
-                        onBack = { nav.popBackStack() }
-                    )
+                    ConCaja("Registrar movimiento") {
+                        RegisterMovementScreen(
+                            onSaved = { nav.popBackStack(Routes.HOME, false) },
+                            onGoVoice = { mode -> nav.navigate(Routes.voiceCapture(mode.name)) },
+                            onGoScan = { nav.navigate(Routes.SCAN_INVOICE) },
+                            onGoExpense = { nav.navigate(Routes.registerExpense()) { popUpTo(Routes.REGISTER_MOVEMENT) { inclusive = true } } },
+                            onBack = { nav.popBackStack() }
+                        )
+                    }
                 }
 
                 composable(Routes.MOVEMENTS_BOOK) {
                     MovementsBookScreen(onBack = { nav.popBackStack() })
                 }
 
-                composable(Routes.EXPENSES) {
-                    ExpensesScreen(onBack = { nav.popBackStack() }, onNewExpense = { nav.navigate(Routes.REGISTER_EXPENSE) })
+                composable(
+                    Routes.EXPENSES,
+                    arguments = listOf(navArgument("aviso") { type = NavType.StringType; nullable = true; defaultValue = null }),
+                ) { entry ->
+                    ExpensesScreen(
+                        onBack = { nav.popBackStack() },
+                        onEdit = { id -> nav.navigate(Routes.registerExpense(id)) },
+                        avisoInicial = entry.arguments?.getString("aviso"),
+                    )
                 }
 
-                composable(Routes.REGISTER_EXPENSE) {
-                    RegisterExpenseScreen(onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() })
+                composable(
+                    Routes.REGISTER_EXPENSE,
+                    arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
+                ) { entry ->
+                    val id = entry.arguments?.getLong("id")?.takeIf { it > 0 }
+                    // Al guardar se ve la lista de gastos con el aviso; editar vuelve a la lista que ya estaba abierta.
+                    val alGuardar: (String) -> Unit = { aviso ->
+                        nav.navigate(Routes.expenses(aviso)) {
+                            popUpTo(if (id != null) Routes.EXPENSES else Routes.REGISTER_EXPENSE) { inclusive = true }
+                        }
+                    }
+                    if (id != null) {
+                        RegisterExpenseScreen(onBack = { nav.popBackStack() }, onSaved = alGuardar, gastoId = id)
+                    } else {
+                        ConCaja("Registrar gasto") { RegisterExpenseScreen(onBack = { nav.popBackStack() }, onSaved = alGuardar) }
+                    }
                 }
 
                 composable(Routes.FIADOS) {
@@ -253,7 +329,7 @@ fun BarrioGoNavGraph() {
                 }
 
                 composable(Routes.NEW_FIADO) {
-                    NewFiadoScreen(onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() })
+                    ConCaja("Nuevo fiado") { NewFiadoScreen(onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() }) }
                 }
 
                 composable(
@@ -261,7 +337,9 @@ fun BarrioGoNavGraph() {
                     arguments = listOf(navArgument("clientId") { type = NavType.LongType }),
                 ) { entry ->
                     val id = entry.arguments?.getLong("clientId") ?: 0L
-                    RegisterPaymentScreen(clientId = id, onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() })
+                    ConCaja("Registrar pago") {
+                        RegisterPaymentScreen(clientId = id, onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() })
+                    }
                 }
 
                 composable(
@@ -269,20 +347,24 @@ fun BarrioGoNavGraph() {
                     arguments = listOf(navArgument("mode") { type = NavType.StringType }),
                 ) { entry ->
                     val mode = MovementType.valueOf(entry.arguments?.getString("mode") ?: MovementType.VENTA.name)
-                    VoiceCaptureScreen(
-                        initialMode = mode,
-                        onBack = { nav.popBackStack() },
-                        onConfirmed = { nav.popBackStack(Routes.HOME, false) },
-                        onWriteInstead = { nav.navigate(Routes.REGISTER_MOVEMENT) { popUpTo(Routes.VOICE_CAPTURE) { inclusive = true } } },
-                    )
+                    ConCaja("Registrar por voz") {
+                        VoiceCaptureScreen(
+                            initialMode = mode,
+                            onBack = { nav.popBackStack() },
+                            onConfirmed = { nav.popBackStack(Routes.HOME, false) },
+                            onWriteInstead = { nav.navigate(Routes.REGISTER_MOVEMENT) { popUpTo(Routes.VOICE_CAPTURE) { inclusive = true } } },
+                        )
+                    }
                 }
 
                 composable(Routes.SCAN_INVOICE) {
-                    ScanInvoiceScreen(
-                        onBack = { nav.popBackStack() },
-                        onDone = { nav.popBackStack(Routes.HOME, false) },
-                        onWriteInstead = { nav.navigate(Routes.REGISTER_EXPENSE) { popUpTo(Routes.SCAN_INVOICE) { inclusive = true } } },
-                    )
+                    ConCaja("Escanear factura") {
+                        ScanInvoiceScreen(
+                            onBack = { nav.popBackStack() },
+                            onDone = { nav.popBackStack(Routes.HOME, false) },
+                            onWriteInstead = { nav.navigate(Routes.registerExpense()) { popUpTo(Routes.SCAN_INVOICE) { inclusive = true } } },
+                        )
+                    }
                 }
             }
 
