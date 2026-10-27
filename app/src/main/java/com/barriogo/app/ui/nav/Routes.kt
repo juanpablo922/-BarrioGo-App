@@ -39,7 +39,12 @@ object Routes {
     fun registerExpense(id: String? = null) = if (id == null) "register_expense" else "register_expense?id=$id"
 
     const val FIADOS = "fiados"
-    const val NEW_FIADO = "new_fiado"
+    /** Nuevo fiado en 3 pasos. Con clientId (desde la ficha) empieza en el paso 2. */
+    const val NEW_FIADO = "new_fiado?clientId={clientId}"
+    fun newFiado(clientId: Long? = null) = if (clientId == null) "new_fiado" else "new_fiado?clientId=$clientId"
+    /** Ficha del cliente: cuánto debe y sus fiados y abonos. */
+    const val CLIENTE_FIADO = "cliente_fiado/{clientId}"
+    fun clienteFiado(clientId: Long) = "cliente_fiado/$clientId"
     const val REGISTER_PAYMENT = "register_payment/{clientId}"
     fun registerPayment(clientId: Long) = "register_payment/$clientId"
 

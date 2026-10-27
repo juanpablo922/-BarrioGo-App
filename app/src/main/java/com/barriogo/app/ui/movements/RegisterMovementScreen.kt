@@ -56,6 +56,7 @@ fun RegisterMovementScreen(
     onGoVoice: (MovementType) -> Unit,
     onGoScan: () -> Unit,
     onGoExpense: (() -> Unit)? = null,
+    onGoFiados: (() -> Unit)? = null,
     onBack: () -> Unit = onSaved
 ) {
     val vm = barrioViewModel { MovementsViewModel(it) }
@@ -143,7 +144,8 @@ fun RegisterMovementScreen(
                         iconTint = texto,
                         isSelected = selectedType == MovementType.FIADO,
                         modifier = Modifier.weight(1f).testTag("type_fiado"),
-                        onClick = { selectedType = MovementType.FIADO }
+                        // Los fiados empiezan en F1 (lista de quién debe → Nuevo fiado / Registrar pago).
+                        onClick = { onGoFiados?.invoke() ?: run { selectedType = MovementType.FIADO } }
                     )
                 }
             } else {

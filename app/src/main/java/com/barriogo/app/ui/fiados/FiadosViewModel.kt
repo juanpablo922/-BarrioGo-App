@@ -3,30 +3,42 @@ package com.barriogo.app.ui.fiados
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.barriogo.app.AppContainer
-import com.barriogo.app.data.ClientEntity
 import com.barriogo.app.data.MovementEntity
+import com.barriogo.app.data.auth.Resultado
+import com.barriogo.app.domain.FiadoPendiente
+import com.barriogo.app.domain.Fiados
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-data class ClientDebt(val client: ClientEntity, val balance: Long, val lastMovement: MovementEntity?)
+import java.text.Normalizer
 
 class FiadosViewModel(private val container: AppContainer) : ViewModel() {
-    val clients: StateFlow<List<ClientEntity>> =
-        container.repo.clients.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** Estado de cuenta de todos los clientes (también los que no deben). null mientras carga. */
+    val cuentas: StateFlow<List<FiadoPendiente>?> = combine(container.repo.clients, container.repo.movements) { clients, movements ->
+        Fiados.cuentas(clients, movements)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val debts: StateFlow<List<ClientDebt>> = combine(container.repo.clients, container.repo.movements) { clients, movements ->
-        clients.mapNotNull { c ->
-            val ms = movements.filter { !it.voided && it.clientId == c.id }
-            val balance = ms.sumOf { m -> if (m.type == MovementType.FIADO.name) m.amount else if (m.type == MovementType.ABONO.name) -m.amount else 0L }
-            if (balance <= 0) null else ClientDebt(c, balance, ms.maxByOrNull { it.createdAt })
-        }.sortedByDescending { it.balance }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** F1 · Fiados: clientes que deben, con la fecha de la deuda y cuántos fiados lleva. null mientras carga. */
+    val pendientes: StateFlow<List<FiadoPendiente>?> = combine(container.repo.clients, container.repo.movements) { clients, movements ->
+        Fiados.pendientes(clients, movements)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Libro completo, para los "Últimos movimientos" de la ficha del cliente. */
+    val movimientos: StateFlow<List<MovementEntity>> =
+        container.repo.movements.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** El ojo de Inicio también oculta los montos aquí. */
+    val ocultarMontos: StateFlow<Boolean> = container.store.hideAmounts
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+    fun cerrarError() { _error.value = null }
 
     private var profileId: Long = 0
     private var profileName: String = ""
@@ -34,33 +46,78 @@ class FiadosViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.activeProfileId.collect { id -> profileId = id ?: 0; profileName = id?.let { container.repo.profile(it)?.name } ?: "" } }
     }
 
-    fun addClient(name: String, phone: String, onDone: (Long) -> Unit) {
-        viewModelScope.launch { onDone(container.repo.addClient(name, phone)) }
+    /**
+     * "+ Agregar cliente": si ya hay uno con el mismo nombre (sin importar tildes ni mayúsculas)
+     * se usa ese en vez de duplicarlo.
+     */
+    fun agregarCliente(nombre: String, celular: String, onListo: (Long) -> Unit) {
+        viewModelScope.launch {
+            val existente = container.repo.clients.first().firstOrNull { normalizar(it.name) == normalizar(nombre) }
+            onListo(existente?.id ?: container.repo.addClient(nombre, celular))
+        }
     }
 
-    fun registerFiado(clientId: Long, itemsText: String, amount: Long, onDone: () -> Unit) {
+    /** Guarda el fiado en la caja abierta. Si algo falla queda en [error] y no se llama [onListo]. */
+    fun guardarFiado(clientId: Long, queSeLlevo: String, monto: Long, onListo: () -> Unit) {
         viewModelScope.launch {
-            container.registrarMovimiento(
+            val r = container.registrarMovimiento(
                 MovementEntity(
-                    type = MovementType.FIADO.name, amount = amount, title = "Fiado", detail = itemsText,
+                    type = MovementType.FIADO.name, amount = monto, title = "Fiado", detail = queSeLlevo.trim(),
                     payMethod = PayMethod.EFECTIVO.name, clientId = clientId, profileId = profileId, profileName = profileName,
                     createdAt = System.currentTimeMillis(),
                 ),
             )
-            onDone()
+            when (r) {
+                is Resultado.Ok -> onListo()
+                is Resultado.Error -> _error.value = r.mensaje
+            }
         }
     }
 
-    fun registerPayment(clientId: Long, amount: Long, onDone: () -> Unit) {
+    /** "Sí, me pagó": abono en efectivo por todo lo que debe; [onListo] recibe cuánto entró a la caja. */
+    fun marcarPagado(clientId: Long, onListo: (Long) -> Unit) {
         viewModelScope.launch {
-            container.registrarMovimiento(
+            val saldo = Fiados.cuentas(container.repo.clients.first(), container.repo.movements.first())
+                .firstOrNull { it.cliente.id == clientId }?.saldo ?: 0L
+            if (saldo <= 0) return@launch
+            guardarPago(clientId, saldo, PayMethod.EFECTIVO) { onListo(saldo) }
+        }
+    }
+
+    /**
+     * "Anular este fiado": anula los fiados y abonos de la deuda actual, igual que eliminar en
+     * Movimientos (quedan tachados, no se borran) y también en la nube.
+     */
+    fun anularFiado(clientId: Long, onListo: () -> Unit) {
+        viewModelScope.launch {
+            val deuda = Fiados.deudaActual(clientId, container.repo.movements.first())
+            val nube = container.enLaNube(container.perfilActivo())
+            deuda.forEach { m ->
+                container.repo.voidMovement(m.id)
+                val remoteId = m.remoteId
+                if (nube != null && remoteId != null) container.movimientosRemotos.anular(nube.first, remoteId, nube.second)
+            }
+            onListo()
+        }
+    }
+
+    /** Registrar pago: el abono en efectivo entra a la caja; por transferencia solo baja la deuda. */
+    fun guardarPago(clientId: Long, monto: Long, metodo: PayMethod, onListo: () -> Unit) {
+        viewModelScope.launch {
+            val r = container.registrarMovimiento(
                 MovementEntity(
-                    type = MovementType.ABONO.name, amount = amount, title = "Abono", detail = "Abono a fiado",
-                    payMethod = PayMethod.EFECTIVO.name, clientId = clientId, profileId = profileId, profileName = profileName,
+                    type = MovementType.ABONO.name, amount = monto, title = "Abono", detail = "Abono a fiado",
+                    payMethod = metodo.name, clientId = clientId, profileId = profileId, profileName = profileName,
                     createdAt = System.currentTimeMillis(),
                 ),
             )
-            onDone()
+            when (r) {
+                is Resultado.Ok -> onListo()
+                is Resultado.Error -> _error.value = r.mensaje
+            }
         }
     }
+
+    private fun normalizar(s: String) =
+        Normalizer.normalize(s.trim(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("\\s+"), " ")
 }
