@@ -42,10 +42,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextDecoration
 import com.barriogo.app.data.MovementEntity
+import com.barriogo.app.domain.EstadoPagoFiado
 import com.barriogo.app.domain.FiadoPendiente
 import com.barriogo.app.domain.Fiados
 import com.barriogo.app.domain.Money
 import com.barriogo.app.domain.MovementType
+import com.barriogo.app.domain.PagoFiado
 import com.barriogo.app.domain.kind
 import com.barriogo.app.ui.theme.BarrioColors
 import com.barriogo.app.ui.theme.FigmaColors
@@ -203,11 +205,12 @@ internal fun FilaCliente(c: FiadoPendiente, ultima: Boolean, onClick: () -> Unit
             Text(c.cliente.name, color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
+                    Fiados.enElLimite(c) -> "Llegó a su límite de fiado"
                     c.saldo <= 0 -> "Sin saldo pendiente"
                     c.cliente.phone.isNotBlank() -> c.cliente.phone
                     else -> "Sin celular"
                 },
-                color = FigmaColors.Dorado, fontSize = 12.sp, maxLines = 1,
+                color = if (Fiados.enElLimite(c)) FigmaColors.Naranja else FigmaColors.Dorado, fontSize = 12.sp, maxLines = 1,
             )
         }
         Text(Money.cop(c.saldo), color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.Bold)
@@ -220,15 +223,29 @@ internal fun Modifier.lineaAbajo(mostrar: Boolean, color: Color): Modifier =
         drawLine(color, Offset(0f, size.height - 0.5f), Offset(size.width, size.height - 0.5f), strokeWidth = 1.dp.toPx())
     }
 
-/** Movimiento de la ficha: ↑ amarillo "+$ 15.000" para fiados, ↓ verde "−$ 10.000" para abonos. */
+/**
+ * Movimiento de la ficha: ↑ amarillo "+$ 15.000" para fiados, ↓ verde "−$ 10.000" para abonos.
+ * El fiado dice si está pendiente, abonado o pagado ([pago]). Con [onClick] se edita o anula.
+ */
 @Composable
-internal fun FilaMovimientoFiado(m: MovementEntity, ultima: Boolean) {
+internal fun FilaMovimientoFiado(m: MovementEntity, ultima: Boolean, pago: PagoFiado? = null, onClick: (() -> Unit)? = null) {
     val esFiado = m.kind == MovementType.FIADO
     val color = if (esFiado) FigmaColors.Amarillo else FigmaColors.Verde
     // Anulado: tachado y al 50 %, como lo eliminado en Movimientos
     val tachado = if (m.voided) TextDecoration.LineThrough else TextDecoration.None
+    val estado = when {
+        m.voided -> " · Anulado" + (m.voidedAt?.let { " " + Fiados.hora(it) } ?: "")
+        pago == null -> ""
+        pago.estado == EstadoPagoFiado.ABONADO -> " · Abonado, faltan ${Money.cop(pago.porPagar)}"
+        else -> " · " + pago.estado.texto
+    }
     Row(
-        Modifier.fillMaxWidth().height(76.dp).lineaAbajo(!ultima, FigmaColors.Tarjeta),
+        Modifier
+            .fillMaxWidth()
+            .height(76.dp)
+            .lineaAbajo(!ultima, FigmaColors.Tarjeta)
+            .then(if (onClick != null && !m.voided) Modifier.clickable(onClick = onClick) else Modifier)
+            .testTag("movimiento_fiado_${m.id}"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -246,8 +263,13 @@ internal fun FilaMovimientoFiado(m: MovementEntity, ultima: Boolean) {
                     maxLines = 1, overflow = TextOverflow.Ellipsis, textDecoration = tachado,
                 )
                 Text(
-                    Fiados.cuando(m.createdAt) + (if (m.voided) " · Anulado" + (m.voidedAt?.let { " " + Fiados.hora(it) } ?: "") else ""),
-                    color = if (m.voided) FigmaColors.Alerta else FigmaColors.Dorado, fontSize = 12.sp, maxLines = 1,
+                    Fiados.cuando(m.createdAt) + estado,
+                    color = when {
+                        m.voided -> FigmaColors.Alerta
+                        pago?.estado == EstadoPagoFiado.PAGADO -> FigmaColors.Verde
+                        else -> FigmaColors.Dorado
+                    },
+                    fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(

@@ -75,7 +75,8 @@ import com.barriogo.app.ui.theme.FigmaColors
 /**
  * F1 · Fiados: cuánto te deben en total, "+ Nuevo fiado", buscador y la lista de clientes que deben
  * (del que más debe al que menos). Tocar un cliente abre la hoja "Fiado pendiente": marcar como
- * pagado (todo en efectivo a la caja) o anular el fiado (queda tachado, como en Movimientos).
+ * pagado (todo en efectivo a la caja; los fiados quedan "pagado", no se borran) o ir a la ficha
+ * para editar o anular un fiado registrado por error.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +93,7 @@ fun FiadosScreen(
     var busqueda by rememberSaveable { mutableStateOf("") }
     // Hoja abierta, confirmación pendiente y aviso verde de abajo
     var abierto by rememberSaveable { mutableStateOf<Long?>(null) }
-    var confirmar by rememberSaveable { mutableStateOf<String?>(null) } // "pagado" | "anular"
+    var confirmar by rememberSaveable { mutableStateOf<String?>(null) } // "pagado"
     var aviso by rememberSaveable { mutableStateOf<String?>(null) }
     val hoja = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val alcance = rememberCoroutineScope()
@@ -125,7 +126,7 @@ fun FiadosScreen(
                 lista.isEmpty() -> Vacio("Sin resultados", "No hay clientes con fiado que coincidan con \"${busqueda.trim()}\".")
                 else -> LazyColumn(
                     Modifier.fillMaxSize().testTag("fiados_list"),
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 112.dp),
+                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 40.dp),
                 ) {
                     items(lista, key = { it.cliente.id }) { f ->
                         FilaFiado(f, monto(f.saldo), ultima = f == lista.last()) { abierto = f.cliente.id }
@@ -175,7 +176,6 @@ fun FiadosScreen(
                 onVerCliente = { val id = cuenta.cliente.id; cerrarHoja(); onOpenClient(id) },
                 // Primero baja la hoja y luego sale la confirmación sobre la lista
                 onPagado = { alcance.launch { hoja.hide() }.invokeOnCompletion { confirmar = "pagado" } },
-                onAnular = { confirmar = "anular" },
             )
         }
     }
@@ -191,23 +191,6 @@ fun FiadosScreen(
                 abierto = null
             },
             onTodaviaNo = { confirmar = null; abierto = null },
-        )
-        "anular" -> AvisoDialogo(
-            titulo = "¿Anular este fiado?",
-            mensaje = "Los fiados de ${cuenta.cliente.name} (${Money.cop(cuenta.saldo)}) quedan anulados: se ven tachados en " +
-                "Movimientos y en su historial, y ya no cuentan en lo que te deben.",
-            principal = "Sí, anular",
-            onPrincipal = {
-                confirmar = null
-                val nombre = cuenta.cliente.name
-                vm.anularFiado(cuenta.cliente.id) {
-                    aviso = "Se anuló el fiado de $nombre."
-                    cerrarHoja()
-                }
-            },
-            secundario = "Conservar",
-            onSecundario = { confirmar = null },
-            principalPeligro = true,
         )
     }
 
@@ -272,7 +255,6 @@ private fun HojaFiado(
     monto: (Long) -> String,
     onVerCliente: () -> Unit,
     onPagado: () -> Unit,
-    onAnular: () -> Unit,
 ) {
     Column(
         Modifier
@@ -327,10 +309,10 @@ private fun HojaFiado(
                 .height(52.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .border(1.dp, FigmaColors.Amarillo, RoundedCornerShape(12.dp))
-                .clickable(onClick = onAnular)
-                .testTag("anular_fiado_button"),
+                .clickable(onClick = onVerCliente)
+                .testTag("editar_fiado_button"),
             contentAlignment = Alignment.Center,
-        ) { Text("Anular este fiado", color = FigmaColors.Amarillo, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+        ) { Text("Editar o anular un fiado", color = FigmaColors.Amarillo, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
     }
 }
 
@@ -409,7 +391,11 @@ private fun FilaFiado(f: FiadoPendiente, saldo: String, ultima: Boolean, onClick
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(f.cliente.name, color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(Fiados.subtitulo(f), color = FigmaColors.Dorado, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (Fiados.pasoElLimite(f)) "Pasó su límite de ${Money.cop(f.cliente.creditLimit)}" else Fiados.subtitulo(f),
+                color = if (Fiados.pasoElLimite(f)) FigmaColors.Naranja else FigmaColors.Dorado,
+                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         }
         Text(saldo, color = FigmaColors.Amarillo, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }

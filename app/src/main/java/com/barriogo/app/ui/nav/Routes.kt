@@ -45,8 +45,10 @@ object Routes {
     /** Ficha del cliente: cuánto debe y sus fiados y abonos. */
     const val CLIENTE_FIADO = "cliente_fiado/{clientId}"
     fun clienteFiado(clientId: Long) = "cliente_fiado/$clientId"
-    const val REGISTER_PAYMENT = "register_payment/{clientId}"
-    fun registerPayment(clientId: Long) = "register_payment/$clientId"
+    /** Registrar pago. Con fiadoId (id en Firestore) el abono va a ese solo fiado. */
+    const val REGISTER_PAYMENT = "register_payment/{clientId}?fiadoId={fiadoId}"
+    fun registerPayment(clientId: Long, fiadoId: String? = null) =
+        if (fiadoId == null) "register_payment/$clientId" else "register_payment/$clientId?fiadoId=$fiadoId"
 
     // IA: voz
     const val VOICE_CAPTURE = "voice_capture/{mode}"

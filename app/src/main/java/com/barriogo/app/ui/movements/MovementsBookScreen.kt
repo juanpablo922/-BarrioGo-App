@@ -44,6 +44,8 @@ import com.barriogo.app.domain.cashDelta
 import com.barriogo.app.ui.barrioViewModel
 import com.barriogo.app.ui.components.CabeceraFigma
 import com.barriogo.app.ui.components.FilaMovimientoFigma
+import com.barriogo.app.ui.fiados.DialogoFiadoDesdeLibro
+import com.barriogo.app.ui.fiados.esDeFiados
 import com.barriogo.app.ui.theme.BarrioColors
 import com.barriogo.app.ui.theme.FigmaColors
 import kotlin.math.abs
@@ -53,7 +55,11 @@ import kotlin.math.abs
  * El lápiz de cada fila abre corregir/eliminar (lo eliminado queda tachado y ya no se edita).
  */
 @Composable
-fun MovementsBookScreen(onBack: () -> Unit) {
+fun MovementsBookScreen(
+    onBack: () -> Unit,
+    /** Desde un fiado del libro: abonar solo a ese fiado (clienteId, id del fiado en Firestore). */
+    onAbonarFiado: (Long, String) -> Unit = { _, _ -> },
+) {
     val vm = barrioViewModel { MovementsViewModel(it) }
     val allMovements by vm.movements.collectAsState()
 
@@ -160,12 +166,17 @@ fun MovementsBookScreen(onBack: () -> Unit) {
         }
 
         editando?.let { m ->
-            EditMovementDialog(
-                movement = m,
-                onSave = { monto, concepto -> vm.editMovement(m.id, monto, concepto) },
-                onDelete = { vm.voidMovement(m.id) },
-                onDismiss = { editando = null },
-            )
+            // Fiados y abonos abren el mismo diálogo de la ficha del cliente (abonar a ese fiado, corregir, anular)
+            if (esDeFiados(m)) {
+                DialogoFiadoDesdeLibro(m, onCerrar = { editando = null }, onAbonarFiado = onAbonarFiado)
+            } else {
+                EditMovementDialog(
+                    movement = m,
+                    onSave = { monto, concepto -> vm.editMovement(m.id, monto, concepto) },
+                    onDelete = { vm.voidMovement(m.id) },
+                    onDismiss = { editando = null },
+                )
+            }
         }
     }
 }

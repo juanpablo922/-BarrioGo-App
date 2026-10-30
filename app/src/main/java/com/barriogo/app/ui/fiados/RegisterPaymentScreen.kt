@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.domain.Fiados
 import com.barriogo.app.domain.Money
 import com.barriogo.app.domain.PayMethod
@@ -58,13 +59,15 @@ import com.barriogo.app.ui.theme.FigmaColors
 /**
  * Figma "Fiado · Registrar pago" y "Fiado · Saldo actualizado": cuánto abona, cómo pagó
  * (efectivo entra a la caja; transferencia no) y el saldo que queda. "Cambiar" deja elegir
- * a otro cliente que deba.
+ * a otro cliente que deba. Con [fiadoId] (id en Firestore) el abono va a ese solo fiado y no
+ * puede pasar de lo que ese fiado debe.
  */
 @Composable
 fun RegisterPaymentScreen(
     clientId: Long,
     onBack: () -> Unit,
     onVolverAFiados: () -> Unit,
+    fiadoId: String? = null,
 ) {
     val vm = barrioViewModel { FiadosViewModel(it) }
     val cuentas by vm.cuentas.collectAsState()
@@ -72,6 +75,8 @@ fun RegisterPaymentScreen(
     val error by vm.error.collectAsState()
 
     var clienteId by rememberSaveable { mutableStateOf(clientId) }
+    // Fiado al que va el abono; null = a toda la deuda
+    var fiadoElegido by rememberSaveable { mutableStateOf(fiadoId) }
     var eligiendo by rememberSaveable { mutableStateOf(false) }
     var montoTexto by rememberSaveable { mutableStateOf("") }
     var metodo by rememberSaveable { mutableStateOf(PayMethod.EFECTIVO) }
@@ -82,6 +87,8 @@ fun RegisterPaymentScreen(
     var saldoAntes by rememberSaveable { mutableLongStateOf(0L) }
 
     val cuenta = cuentas?.firstOrNull { it.cliente.id == clienteId }
+    val fiado = fiadoElegido?.let { id -> todos.firstOrNull { it.remoteId == id && it.clientId == clienteId && !it.voided } }
+    val porPagarFiado = fiado?.let { Fiados.pagosPorFiado(clienteId, todos)[it.id]?.porPagar } ?: 0L
     val atras: () -> Unit = {
         when {
             listo -> onVolverAFiados()
@@ -112,7 +119,7 @@ fun RegisterPaymentScreen(
                 eligiendo -> ElegirDeudor(
                     deudores = cuentas.orEmpty().filter { it.saldo > 0 }.sortedByDescending { it.saldo },
                     onElegir = { id ->
-                        if (id != clienteId) montoTexto = ""
+                        if (id != clienteId) { montoTexto = ""; fiadoElegido = null }
                         clienteId = id
                         eligiendo = false
                     },
@@ -120,6 +127,9 @@ fun RegisterPaymentScreen(
                 else -> FormularioPago(
                     nombre = cuenta?.cliente?.name.orEmpty(),
                     saldo = cuenta?.saldo ?: 0L,
+                    fiado = fiado,
+                    porPagarFiado = porPagarFiado,
+                    onTodaLaDeuda = { fiadoElegido = null },
                     montoTexto = montoTexto,
                     onMonto = { montoTexto = it.filter(Char::isDigit).take(9).trimStart('0') },
                     metodo = metodo,
@@ -129,10 +139,11 @@ fun RegisterPaymentScreen(
                     onGuardar = {
                         val monto = montoTexto.toLongOrNull() ?: 0L
                         val saldo = cuenta?.saldo ?: 0L
-                        if (Fiados.problemaAbono(monto, saldo) != null || guardando) return@FormularioPago
+                        val problema = if (fiado != null) Fiados.problemaAbonoAFiado(monto, porPagarFiado) else Fiados.problemaAbono(monto, saldo)
+                        if (problema != null || guardando) return@FormularioPago
                         guardando = true
                         saldoAntes = saldo
-                        vm.guardarPago(clienteId, monto, metodo) {
+                        vm.guardarPago(clienteId, monto, metodo, fiado?.remoteId) {
                             montoGuardado = monto
                             guardando = false
                             listo = true
@@ -154,6 +165,10 @@ fun RegisterPaymentScreen(
 private fun FormularioPago(
     nombre: String,
     saldo: Long,
+    /** Fiado al que va el abono, o null si es a toda la deuda. */
+    fiado: MovementEntity?,
+    porPagarFiado: Long,
+    onTodaLaDeuda: () -> Unit,
     montoTexto: String,
     onMonto: (String) -> Unit,
     metodo: PayMethod,
@@ -163,7 +178,8 @@ private fun FormularioPago(
     onGuardar: () -> Unit,
 ) {
     val monto = montoTexto.toLongOrNull() ?: 0L
-    val problema = Fiados.problemaAbono(monto, saldo)
+    val aUnFiado = fiado != null
+    val problema = if (aUnFiado) Fiados.problemaAbonoAFiado(monto, porPagarFiado) else Fiados.problemaAbono(monto, saldo)
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(top = 8.dp)) {
             // Cliente: nombre, "Debe $ 50.000" y "Cambiar"
@@ -178,10 +194,35 @@ private fun FormularioPago(
             ) {
                 Text(nombre, color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Debe ${Money.cop(saldo)}", color = FigmaColors.Dorado, fontSize = 12.sp)
-                Text(
-                    "Cambiar", color = FigmaColors.Amarillo, fontSize = 12.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onCambiar).testTag("pago_cambiar_cliente"),
-                )
+                // Con un fiado elegido no se cambia de cliente: el fiado es de este
+                if (!aUnFiado) {
+                    Text(
+                        "Cambiar", color = FigmaColors.Amarillo, fontSize = 12.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onCambiar).testTag("pago_cambiar_cliente"),
+                    )
+                }
+            }
+            if (fiado != null) {
+                Spacer(Modifier.height(12.dp))
+                // A qué fiado va el abono ("solo quiero saldar este")
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(FigmaColors.Hundido)
+                        .border(1.dp, FigmaColors.Dorado, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .testTag("pago_fiado_elegido"),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text("Abono solo a este fiado", color = FigmaColors.Dorado, fontSize = 12.sp)
+                    Text(Fiados.titulo(fiado), color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${Fiados.cuando(fiado.createdAt)} · faltan ${Money.cop(porPagarFiado)}", color = FigmaColors.Cuerpo, fontSize = 12.sp)
+                    Text(
+                        "Abonar a toda la deuda", color = FigmaColors.Amarillo, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onTodaLaDeuda).padding(top = 4.dp).testTag("pago_toda_la_deuda"),
+                    )
+                }
             }
             Spacer(Modifier.height(16.dp))
             EtiquetaFiado("¿Cuánto va a abonar?")
@@ -212,8 +253,9 @@ private fun FormularioPago(
                     .testTag("saldo_despues_card"),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("Saldo después del pago", color = FigmaColors.Dorado, fontSize = 12.sp)
-                Text(Money.cop((saldo - monto).coerceAtLeast(0)), color = FigmaColors.Verde, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                Text(if (aUnFiado) "De este fiado quedarán" else "Saldo después del pago", color = FigmaColors.Dorado, fontSize = 12.sp)
+                Text(Money.cop(((if (aUnFiado) porPagarFiado else saldo) - monto).coerceAtLeast(0)), color = FigmaColors.Verde, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                if (aUnFiado) Text("Deuda total después: ${Money.cop((saldo - monto).coerceAtLeast(0))}", color = FigmaColors.Cuerpo, fontSize = 12.sp)
             }
             Spacer(Modifier.height(24.dp))
         }

@@ -64,6 +64,7 @@ import com.barriogo.app.ui.theme.FigmaColors
 /**
  * Nuevo fiado en 3 pasos (Figma "Fiado · Seleccionar cliente", "Fiado · Nuevo fiado" y
  * "Fiado · Fiado guardado"). Con [clienteInicial] (desde la ficha del cliente) empieza en el paso 2.
+ * Si el cliente llegó a su cupo, o el monto lo haría pasar, la app avisa y no deja guardar.
  */
 @Composable
 fun NewFiadoScreen(
@@ -75,9 +76,13 @@ fun NewFiadoScreen(
     val vm = barrioViewModel { FiadosViewModel(it) }
     val cuentas by vm.cuentas.collectAsState()
     val error by vm.error.collectAsState()
+    val avisoCupo by vm.avisoCupo.collectAsState()
 
     var paso by rememberSaveable { mutableStateOf(if (clienteInicial != null) 2 else 1) }
     var clienteId by rememberSaveable { mutableStateOf(clienteInicial) }
+    // Nombre y celular del cliente elegido o recién agregado, por si la lista todavía no lo trae
+    var nombreElegido by rememberSaveable { mutableStateOf("") }
+    var celularElegido by rememberSaveable { mutableStateOf("") }
     var montoTexto by rememberSaveable { mutableStateOf("") }
     var queSeLlevo by rememberSaveable { mutableStateOf("") }
     // Lo que se muestra en "Fiado guardado"
@@ -111,14 +116,27 @@ fun NewFiadoScreen(
                 1 -> PasoCliente(
                     cuentas = cuentas,
                     onElegir = { id ->
+                        val elegida = cuentas?.firstOrNull { it.cliente.id == id }
+                        if (elegida != null && Fiados.enElLimite(elegida)) {
+                            // Ya no se le puede fiar: se avisa y se queda en la lista
+                            vm.avisarCupo(
+                                Fiados.problemaCupo(elegida.cliente.name, elegida.saldo, 1, elegida.cliente.creditLimit)
+                                    ?: "${elegida.cliente.name} pasó su límite de fiado.",
+                            )
+                            return@PasoCliente
+                        }
                         if (id != clienteId) { montoTexto = ""; queSeLlevo = "" }
                         clienteId = id
+                        nombreElegido = elegida?.cliente?.name.orEmpty()
+                        celularElegido = elegida?.cliente?.phone.orEmpty()
                         paso = 2
                     },
-                    onAgregar = { nombre, celular, listo ->
-                        vm.agregarCliente(nombre, celular) { id ->
+                    onAgregar = { nombre, celular, direccion, listo ->
+                        vm.agregarCliente(nombre, celular, direccion) { id ->
                             listo()
                             clienteId = id
+                            nombreElegido = nombre
+                            celularElegido = celular
                             montoTexto = ""
                             queSeLlevo = ""
                             paso = 2
@@ -126,8 +144,10 @@ fun NewFiadoScreen(
                     },
                 )
                 2 -> PasoMonto(
-                    nombre = cuenta?.cliente?.name.orEmpty(),
+                    nombre = cuenta?.cliente?.name ?: nombreElegido,
+                    celular = cuenta?.cliente?.phone ?: celularElegido,
                     saldo = cuenta?.saldo ?: 0L,
+                    cupo = cuenta?.cliente?.creditLimit ?: Fiados.CUPO_POR_DEFECTO,
                     montoTexto = montoTexto,
                     onMonto = { montoTexto = it.filter(Char::isDigit).take(9).trimStart('0') },
                     queSeLlevo = queSeLlevo,
@@ -137,7 +157,7 @@ fun NewFiadoScreen(
                     onGuardar = {
                         val id = clienteId ?: return@PasoMonto
                         val monto = montoTexto.toLongOrNull() ?: 0L
-                        if (monto <= 0 || guardando) return@PasoMonto
+                        if (monto <= 0 || queSeLlevo.isBlank() || guardando) return@PasoMonto
                         guardando = true
                         saldoAnterior = cuenta?.saldo ?: 0L
                         vm.guardarFiado(id, queSeLlevo, monto) {
@@ -163,6 +183,13 @@ fun NewFiadoScreen(
                 vm.cerrarError()
             })
         }
+        // Aviso al vendedor o al administrador: el cliente llegó (o pasaría) su límite de fiado
+        avisoCupo?.let {
+            AvisoDialogo(titulo = "Llegó a su límite de fiado", mensaje = it, principal = "Entendido", onPrincipal = {
+                guardando = false
+                vm.cerrarAvisoCupo()
+            })
+        }
     }
 }
 
@@ -174,7 +201,7 @@ fun NewFiadoScreen(
 private fun PasoCliente(
     cuentas: List<FiadoPendiente>?,
     onElegir: (Long) -> Unit,
-    onAgregar: (nombre: String, celular: String, listo: () -> Unit) -> Unit,
+    onAgregar: (nombre: String, celular: String, direccion: String, listo: () -> Unit) -> Unit,
 ) {
     var busqueda by rememberSaveable { mutableStateOf("") }
     var agregando by rememberSaveable { mutableStateOf(false) }
@@ -209,72 +236,15 @@ private fun PasoCliente(
     if (agregando) {
         // Lo que se escribió en el buscador sirve de punto de partida: letras → nombre, números → celular
         val soloNumeros = busqueda.isNotBlank() && busqueda.all { it.isDigit() || it == ' ' }
-        DialogoAgregarCliente(
+        DialogoCliente(
+            titulo = "Agregar cliente",
+            boton = "Agregar y continuar",
             nombreInicial = if (soloNumeros) "" else busqueda.trim(),
             celularInicial = if (soloNumeros) busqueda.filter(Char::isDigit) else "",
+            direccionInicial = "",
             onCancelar = { agregando = false },
-            onAgregar = { n, c -> onAgregar(n, c) { agregando = false } },
+            onGuardar = { n, c, d -> onAgregar(n, c, d) { agregando = false } },
         )
-    }
-}
-
-/** "+ Agregar cliente": nombre obligatorio y celular opcional (7 a 10 dígitos). */
-@Composable
-private fun DialogoAgregarCliente(
-    nombreInicial: String,
-    celularInicial: String,
-    onCancelar: () -> Unit,
-    onAgregar: (String, String) -> Unit,
-) {
-    var nombre by rememberSaveable { mutableStateOf(nombreInicial) }
-    var celular by rememberSaveable { mutableStateOf(celularInicial) }
-    var intento by rememberSaveable { mutableStateOf(false) }
-    var enviando by rememberSaveable { mutableStateOf(false) }
-    val errorNombre = if (nombre.trim().length < 2) "Escribe el nombre del cliente" else null
-    val errorCelular = if (celular.isNotEmpty() && celular.length !in 7..10) "El celular debe tener entre 7 y 10 dígitos" else null
-    val forma = RoundedCornerShape(20.dp)
-
-    Dialog(onDismissRequest = onCancelar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(
-            Modifier
-                .padding(horizontal = 24.dp)
-                .widthIn(max = 364.dp)
-                .fillMaxWidth()
-                .shadow(24.dp, forma, ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = Color.Black.copy(alpha = 0.6f))
-                .clip(forma)
-                .background(BarrioColors.Background)
-                .border(1.dp, FigmaColors.Dorado, forma)
-                .padding(22.dp)
-                .testTag("dialogo_agregar_cliente"),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("Agregar cliente", color = FigmaColors.Amarillo, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            EtiquetaFiado("Nombre")
-            CampoFiado(nombre, { nombre = it.take(60) }, "Ej. Marta Ramírez", Modifier.testTag("nuevo_cliente_nombre"), error = intento && errorNombre != null)
-            if (intento && errorNombre != null) Text(errorNombre, color = FigmaColors.Naranja, fontSize = 13.sp)
-            Spacer(Modifier.height(4.dp))
-            EtiquetaFiado("Celular (opcional)")
-            CampoFiado(
-                celular, { celular = it.filter(Char::isDigit).take(10) }, "Ej. 300 456 7890",
-                Modifier.testTag("nuevo_cliente_celular"), teclado = KeyboardType.Phone, accion = ImeAction.Done,
-                error = intento && errorCelular != null,
-            )
-            if (intento && errorCelular != null) Text(errorCelular, color = FigmaColors.Naranja, fontSize = 13.sp)
-            Spacer(Modifier.height(8.dp))
-            BotonFigma("Agregar y continuar", Modifier.testTag("confirmar_agregar_cliente"), tamanoTexto = 15) {
-                intento = true
-                if (errorNombre == null && errorCelular == null && !enviando) {
-                    enviando = true
-                    onAgregar(nombre.trim(), celular)
-                }
-            }
-            Text(
-                "Cancelar",
-                color = FigmaColors.Dorado, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onCancelar).padding(vertical = 12.dp),
-            )
-        }
     }
 }
 
@@ -285,7 +255,9 @@ private fun DialogoAgregarCliente(
 @Composable
 private fun PasoMonto(
     nombre: String,
+    celular: String,
     saldo: Long,
+    cupo: Long,
     montoTexto: String,
     onMonto: (String) -> Unit,
     queSeLlevo: String,
@@ -294,23 +266,33 @@ private fun PasoMonto(
     onCambiar: () -> Unit,
     onGuardar: () -> Unit,
 ) {
-    val listo = (montoTexto.toLongOrNull() ?: 0L) > 0
+    val monto = montoTexto.toLongOrNull() ?: 0L
+    val problemaCupo = if (monto > 0) Fiados.problemaCupo(nombre, saldo, monto, cupo) else null
+    val listo = monto > 0 && queSeLlevo.isNotBlank() && problemaCupo == null
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-            // Cliente elegido + "Cambiar"
-            Column(
+            // Cliente elegido: iniciales, nombre y celular, con "Cambiar" a la derecha
+            Row(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(FigmaColors.Tarjeta)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
                     .testTag("cliente_elegido"),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(nombre, color = FigmaColors.Crema, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                AvatarCliente(nombre.ifBlank { "?" })
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        nombre.ifBlank { "Cliente" }, color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("cliente_elegido_nombre"),
+                    )
+                    Text(celular.ifBlank { "Sin celular" }, color = FigmaColors.Dorado, fontSize = 12.sp, maxLines = 1)
+                }
                 Text(
-                    "Cambiar", color = FigmaColors.Amarillo, fontSize = 13.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onCambiar).testTag("cambiar_cliente"),
+                    "Cambiar", color = FigmaColors.Amarillo, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onCambiar).padding(4.dp).testTag("cambiar_cliente"),
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -330,6 +312,12 @@ private fun PasoMonto(
             )
             Spacer(Modifier.height(12.dp))
             Text("Saldo actual ${Money.cop(saldo)}", color = FigmaColors.Cuerpo, fontSize = 13.sp, modifier = Modifier.testTag("saldo_actual"))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                problemaCupo ?: "Cupo ${Money.cop(cupo)} · le puedes fiar hasta ${Money.cop((cupo - saldo).coerceAtLeast(0))}",
+                color = if (problemaCupo != null) FigmaColors.Naranja else FigmaColors.Cuerpo, fontSize = 13.sp, lineHeight = 18.sp,
+                modifier = Modifier.testTag("cupo_fiado"),
+            )
             Spacer(Modifier.height(24.dp))
         }
         Column(
@@ -338,8 +326,17 @@ private fun PasoMonto(
         ) {
             BotonFigma("Guardar fiado", Modifier.testTag("guardar_fiado_button"), habilitado = listo && !guardando, tamanoTexto = 15, onClick = onGuardar)
             Text(
-                if (listo) "Todo listo, ya puedes guardar" else "Escribe el monto para continuar",
-                color = if (listo) FigmaColors.Verde else FigmaColors.Crema,
+                when {
+                    listo -> "Todo listo, ya puedes guardar"
+                    monto <= 0 -> "Escribe el monto para continuar"
+                    problemaCupo != null -> "Pasa su límite de fiado"
+                    else -> "Escribe qué se llevó"
+                },
+                color = when {
+                    listo -> FigmaColors.Verde
+                    problemaCupo != null -> FigmaColors.Naranja
+                    else -> FigmaColors.Crema
+                },
                 fontSize = 13.sp, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().testTag("guardar_fiado_estado"),
             )

@@ -1,6 +1,6 @@
 package com.barriogo.app.domain
 
-import com.barriogo.app.data.ClientEntity
+import com.barriogo.app.data.fiados.Cliente
 import com.barriogo.app.data.MovementEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -11,9 +11,9 @@ import java.time.ZoneId
 /** F1 · Fiados: saldo pendiente por cliente, búsqueda y textos. */
 class FiadosTest {
     private val zona = ZoneId.of("America/Bogota")
-    private val marta = ClientEntity(1, "Marta Ramírez", "300 123 4567")
-    private val pedro = ClientEntity(2, "Pedro Gómez", "311 555 0000")
-    private val rosa = ClientEntity(3, "Rosa Hernández")
+    private val marta = Cliente(1, "c1", "Marta Ramírez", "300 123 4567")
+    private val pedro = Cliente(2, "c2", "Pedro Gómez", "311 555 0000")
+    private val rosa = Cliente(3, "c3", "Rosa Hernández")
 
     private fun dia(mes: Int, d: Int) = LocalDate.of(2026, mes, d).atStartOfDay(zona).toInstant().toEpochMilli()
 
@@ -136,5 +136,86 @@ class FiadosTest {
     @Test fun textos() {
         assertEquals("1 cliente con fiado pendiente", Fiados.resumenClientes(1))
         assertEquals("3 clientes con fiado pendiente", Fiados.resumenClientes(3))
+    }
+
+    @Test fun estadoDePagoFifo() {
+        // Igual que el backend: el abono salda primero el fiado más viejo; pagar no borra el fiado.
+        val movs = listOf(
+            mov(MovementType.FIADO, 1, 10_000, dia(3, 2)).copy(id = 1),
+            mov(MovementType.FIADO, 1, 5_000, dia(3, 3)).copy(id = 2),
+            mov(MovementType.FIADO, 1, 4_000, dia(3, 4)).copy(id = 3),
+            mov(MovementType.ABONO, 1, 12_000, dia(3, 5)).copy(id = 4),
+            mov(MovementType.FIADO, 1, 9_000, dia(3, 5), anulado = true).copy(id = 5),
+        )
+        val pagos = Fiados.pagosPorFiado(1, movs)
+        assertEquals(PagoFiado(EstadoPagoFiado.PAGADO, 0), pagos[1])
+        assertEquals(PagoFiado(EstadoPagoFiado.ABONADO, 3_000), pagos[2])
+        assertEquals(PagoFiado(EstadoPagoFiado.PENDIENTE, 4_000), pagos[3])
+        assertEquals(null, pagos[5])
+        assertEquals(7_000L, Fiados.balance(1, movs))
+    }
+
+    @Test fun abonoAUnSoloFiado() {
+        // Tres fiados; el abono dirigido salda el de 5.000 y deja los otros intactos. Igual que el backend.
+        val movs = listOf(
+            mov(MovementType.FIADO, 1, 20_000, dia(3, 2)).copy(id = 1, remoteId = "f1"),
+            mov(MovementType.FIADO, 1, 5_000, dia(3, 3)).copy(id = 2, remoteId = "f2"),
+            mov(MovementType.FIADO, 1, 25_000, dia(3, 4)).copy(id = 3, remoteId = "f3"),
+            mov(MovementType.ABONO, 1, 5_000, dia(3, 5)).copy(id = 4, fiadoId = "f2"),
+        )
+        val pagos = Fiados.pagosPorFiado(1, movs)
+        assertEquals(PagoFiado(EstadoPagoFiado.PENDIENTE, 20_000), pagos[1])
+        assertEquals(PagoFiado(EstadoPagoFiado.PAGADO, 0), pagos[2])
+        assertEquals(PagoFiado(EstadoPagoFiado.PENDIENTE, 25_000), pagos[3])
+        // Lo que sobra de un abono dirigido baja la deuda del más viejo
+        val sobra = Fiados.pagosPorFiado(1, movs + mov(MovementType.ABONO, 1, 3_000, dia(3, 6)).copy(id = 5, fiadoId = "f2"))
+        assertEquals(PagoFiado(EstadoPagoFiado.ABONADO, 17_000), sobra[1])
+        assertEquals("", Fiados.problemaAbonoAFiado(0, 5_000))
+        assertEquals(null, Fiados.problemaAbonoAFiado(5_000, 5_000))
+        assertEquals("Este fiado ya está pagado", Fiados.problemaAbonoAFiado(1_000, 0))
+        assertTrue(Fiados.problemaAbonoAFiado(6_000, 5_000)!!.startsWith("De este fiado solo faltan $ 5.000"))
+    }
+
+    @Test fun cupoDeFiado() {
+        assertEquals(50_000L, Fiados.CUPO_POR_DEFECTO)
+        assertEquals(null, Fiados.problemaCupo("Marta", 30_000, 20_000, 50_000))
+        assertEquals(
+            "Marta debe $ 40.000 y su límite es $ 50.000: le puedes fiar hasta $ 10.000.",
+            Fiados.problemaCupo("Marta", 40_000, 15_000, 50_000),
+        )
+        assertTrue(Fiados.problemaCupo("Marta", 50_000, 1, 50_000)!!.startsWith("Marta ya llegó a su límite"))
+        val enElLimite = FiadoPendiente(marta, 50_000, dia(3, 2), 2)
+        assertTrue(Fiados.enElLimite(enElLimite))
+        assertEquals(false, Fiados.pasoElLimite(enElLimite))
+        assertTrue(Fiados.pasoElLimite(enElLimite.copy(saldo = 51_000)))
+        assertTrue(Fiados.pasoElLimite(enElLimite.copy(saldo = 10_000, cliente = marta.copy(overLimit = true))))
+        assertEquals(0L, Fiados.disponible(enElLimite.copy(saldo = 60_000)))
+    }
+
+    @Test fun cambiarCupo() {
+        assertEquals("El cupo no puede ser menor a $ 50.000", Fiados.problemaNuevoCupo(50_000, 40_000))
+        assertEquals("", Fiados.problemaNuevoCupo(50_000, 50_000))
+        assertEquals(null, Fiados.problemaNuevoCupo(50_000, 120_000))
+    }
+
+    @Test fun datosDelCliente() {
+        assertTrue(Fiados.problemasCliente("Marta Ramírez", "3004567890", "").isEmpty())
+        assertEquals(setOf("nombre", "celular"), Fiados.problemasCliente("M", "", "").keys)
+        assertEquals("El celular debe tener entre 7 y 10 dígitos", Fiados.problemasCliente("Marta", "300", "")["celular"])
+        assertEquals("La dirección puede tener hasta 200 letras", Fiados.problemasCliente("Marta", "3004567890", "x".repeat(201))["direccion"])
+    }
+
+    @Test fun editarYAnular() {
+        // Fió 10.000 y 5.000 y abonó 12.000: el balance es 3.000.
+        assertEquals(null, Fiados.problemaEditarFiado("Marta", 5_000, 8_000, 3_000, 50_000))
+        assertEquals(
+            "Marta ya abonó más que eso: este fiado no puede quedar en menos de $ 2.000",
+            Fiados.problemaEditarFiado("Marta", 5_000, 1_000, 3_000, 50_000),
+        )
+        assertTrue(Fiados.problemaEditarFiado("Marta", 5_000, 60_000, 3_000, 50_000)!!.contains("límite"))
+        assertEquals(null, Fiados.problemaEditarAbono(12_000, 15_000, 3_000))
+        assertEquals("No puede abonar más de lo que debe ($ 15.000)", Fiados.problemaEditarAbono(12_000, 16_000, 3_000))
+        assertEquals(null, Fiados.problemaAnularFiado(3_000, 3_000))
+        assertTrue(Fiados.problemaAnularFiado(5_000, 3_000) != null)
     }
 }
