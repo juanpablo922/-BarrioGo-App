@@ -63,7 +63,7 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
         _state.value = _state.value.copy(phase = VoicePhase.PROCESSING, transcript = text)
         viewModelScope.launch {
             // Una sola lectura del estado actual de clientes; no hace falta observarlos en vivo aquí.
-            val clients = container.repo.clients.first().map { c -> ClientRef(c.id, c.name) }
+            val clients = container.fiados.clientes.first().map { c -> ClientRef(c.id, c.name) }
             when (val r = MovementAgent.parse(text, _state.value.mode, clients)) {
                 is AgentResult.Ok -> _state.value = _state.value.copy(phase = VoicePhase.PROPOSAL, draft = r.draft, error = null)
                 is AgentResult.NotUnderstood -> _state.value = _state.value.copy(phase = VoicePhase.NOT_UNDERSTOOD, reason = r.reason)
@@ -83,11 +83,16 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
     fun confirm(onSaved: () -> Unit) {
         val d = _state.value.draft ?: return
         viewModelScope.launch {
-            var clientId = d.clientId
+            val clientId = d.clientId
+            // El cliente nuevo necesita su celular: por voz no se puede crear, se agrega en Fiados.
             if (clientId == null && d.type == MovementType.FIADO && !d.heardClient.isNullOrBlank()) {
-                clientId = container.repo.addClient(d.heardClient, "")
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.PROPOSAL,
+                    error = "${d.heardClient} no está en tus clientes. Agrégalo en Fiados con su celular y vuelve a intentarlo.",
+                )
+                return@launch
             }
-            // Los gastos van a Firestore; ventas y fiados a Room, en la caja abierta.
+            // Gastos, fiados y abonos van a Firestore; ventas a Room, en la caja abierta.
             val r = container.registrarMovimiento(
                 MovementEntity(
                     type = d.type.name,

@@ -1,5 +1,12 @@
 package com.barriogo.app.ui.nav
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.barriogo.app.ui.theme.BarrioColors
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -33,6 +40,7 @@ import com.barriogo.app.ui.components.BottomDest
 import com.barriogo.app.ui.components.RegisterChooserSheet
 import com.barriogo.app.ui.expenses.ExpensesScreen
 import com.barriogo.app.ui.expenses.RegisterExpenseScreen
+import com.barriogo.app.ui.fiados.ClienteFiadoScreen
 import com.barriogo.app.ui.fiados.FiadosScreen
 import com.barriogo.app.ui.fiados.NewFiadoScreen
 import com.barriogo.app.ui.fiados.RegisterPaymentScreen
@@ -42,7 +50,10 @@ import com.barriogo.app.ui.movements.RegisterMovementScreen
 import com.barriogo.app.ui.scan.ScanInvoiceScreen
 import com.barriogo.app.ui.voice.VoiceCaptureScreen
 
-private val BOTTOM_ROUTES = setOf(Routes.HOME, Routes.MOVEMENTS_BOOK, Routes.REGISTER_MOVEMENT, Routes.CASH, Routes.EXPENSES)
+private val BOTTOM_ROUTES = setOf(Routes.HOME, Routes.MOVEMENTS_BOOK, Routes.REGISTER_MOVEMENT, Routes.CASH, Routes.EXPENSES, Routes.FIADOS, Routes.NEW_FIADO, Routes.CLIENTE_FIADO, Routes.REGISTER_PAYMENT)
+
+/** Alto del desvanecido sobre el borde inferior del contenido cuando se ve el menú flotante. */
+private val DESVANECIDO_MENU = 36.dp
 
 /** Grafo de navegación completo con el flujo exacto del prototipo Figma. */
 @Composable
@@ -62,6 +73,11 @@ fun BarrioGoNavGraph() {
         contenido = contenido,
     )
 
+    /** "Volver a Fiado" regresa a la lista F1 (si no estaba en la pila, la abre). */
+    val volverAFiados: () -> Unit = {
+        if (!nav.popBackStack(Routes.FIADOS, false)) nav.navigate(Routes.FIADOS) { popUpTo(Routes.HOME) }
+    }
+
     var showRegisterSheet by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -70,7 +86,7 @@ fun BarrioGoNavGraph() {
                 // Con la ventana "¿Cómo quieres registrar?" abierta, el resaltado va sobre Registrar
                 val dest = if (showRegisterSheet) BottomDest.REGISTRAR else when (currentRoute) {
                     Routes.HOME -> BottomDest.INICIO
-                    Routes.MOVEMENTS_BOOK, Routes.EXPENSES -> BottomDest.MOVIMIENTOS
+                    Routes.MOVEMENTS_BOOK, Routes.EXPENSES, Routes.FIADOS, Routes.NEW_FIADO, Routes.CLIENTE_FIADO, Routes.REGISTER_PAYMENT -> BottomDest.MOVIMIENTOS
                     Routes.REGISTER_MOVEMENT -> BottomDest.REGISTRAR
                     else -> BottomDest.CAJA
                 }
@@ -281,13 +297,17 @@ fun BarrioGoNavGraph() {
                             onGoVoice = { mode -> nav.navigate(Routes.voiceCapture(mode.name)) },
                             onGoScan = { nav.navigate(Routes.SCAN_INVOICE) },
                             onGoExpense = { nav.navigate(Routes.registerExpense()) { popUpTo(Routes.REGISTER_MOVEMENT) { inclusive = true } } },
+                            onGoFiados = { nav.navigate(Routes.FIADOS) { popUpTo(Routes.REGISTER_MOVEMENT) { inclusive = true } } },
                             onBack = { nav.popBackStack() }
                         )
                     }
                 }
 
                 composable(Routes.MOVEMENTS_BOOK) {
-                    MovementsBookScreen(onBack = { nav.popBackStack() })
+                    MovementsBookScreen(
+                        onBack = { nav.popBackStack() },
+                        onAbonarFiado = { cliente, fiadoId -> nav.navigate(Routes.registerPayment(cliente, fiadoId)) },
+                    )
                 }
 
                 composable(
@@ -321,23 +341,54 @@ fun BarrioGoNavGraph() {
 
                 composable(Routes.FIADOS) {
                     FiadosScreen(
-                        onNewFiado = { nav.navigate(Routes.NEW_FIADO) },
-                        onOpenClient = { id -> nav.navigate(Routes.registerPayment(id)) },
+                        onNewFiado = { nav.navigate(Routes.newFiado()) },
+                        onOpenClient = { id -> nav.navigate(Routes.clienteFiado(id)) },
                         onBack = { nav.popBackStack() }
                     )
                 }
 
-                composable(Routes.NEW_FIADO) {
-                    ConCaja("Nuevo fiado") { NewFiadoScreen(onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() }) }
+                composable(
+                    Routes.NEW_FIADO,
+                    arguments = listOf(navArgument("clientId") { type = NavType.LongType; defaultValue = -1L }),
+                ) { entry ->
+                    val cliente = entry.arguments?.getLong("clientId")?.takeIf { it > 0 }
+                    ConCaja("Nuevo fiado") {
+                        NewFiadoScreen(
+                            onBack = { nav.popBackStack() },
+                            onVerCliente = { id ->
+                                nav.navigate(Routes.clienteFiado(id)) { popUpTo(Routes.FIADOS) }
+                            },
+                            onVolverAFiados = volverAFiados,
+                            clienteInicial = cliente,
+                        )
+                    }
+                }
+
+                composable(
+                    Routes.CLIENTE_FIADO,
+                    arguments = listOf(navArgument("clientId") { type = NavType.LongType }),
+                ) { entry ->
+                    val id = entry.arguments?.getLong("clientId") ?: 0L
+                    ClienteFiadoScreen(
+                        clienteId = id,
+                        onBack = { nav.popBackStack() },
+                        onNuevoFiado = { nav.navigate(Routes.newFiado(it)) },
+                        onRegistrarPago = { nav.navigate(Routes.registerPayment(it)) },
+                        onAbonarFiado = { cliente, fiadoId -> nav.navigate(Routes.registerPayment(cliente, fiadoId)) },
+                    )
                 }
 
                 composable(
                     Routes.REGISTER_PAYMENT,
-                    arguments = listOf(navArgument("clientId") { type = NavType.LongType }),
+                    arguments = listOf(
+                        navArgument("clientId") { type = NavType.LongType },
+                        navArgument("fiadoId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    ),
                 ) { entry ->
                     val id = entry.arguments?.getLong("clientId") ?: 0L
+                    val fiadoId = entry.arguments?.getString("fiadoId")
                     ConCaja("Registrar pago") {
-                        RegisterPaymentScreen(clientId = id, onBack = { nav.popBackStack() }, onSaved = { nav.popBackStack() })
+                        RegisterPaymentScreen(clientId = id, fiadoId = fiadoId, onBack = { nav.popBackStack() }, onVolverAFiados = volverAFiados)
                     }
                 }
 
@@ -368,6 +419,16 @@ fun BarrioGoNavGraph() {
             }
 
             // Bottom sheet modal for "+ Registrar" options
+            // Las listas se desvanecen justo encima del menú flotante en vez de cortarse de golpe
+            if (currentRoute in BOTTOM_ROUTES) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(DESVANECIDO_MENU)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, BarrioColors.Background))),
+                )
+            }
             if (showRegisterSheet) {
                 RegisterChooserSheet(
                     onDismiss = { showRegisterSheet = false },

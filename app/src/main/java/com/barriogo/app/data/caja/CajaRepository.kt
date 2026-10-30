@@ -1,6 +1,7 @@
 package com.barriogo.app.data.caja
 
 import com.barriogo.app.data.AppDatabase
+import com.barriogo.app.data.BarrioRepository
 import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.data.ProfileEntity
 import com.barriogo.app.data.SessionStore
@@ -55,14 +56,14 @@ class CajaRepository(
     val ultimaCerrada: Flow<Caja?> = cajas.map { lista -> lista.firstOrNull { !it.isOpen } }.distinctUntilChanged()
 
     /**
-     * Movimientos de una caja: los gastos de Firestore más lo que vive en Room (ventas, fiados, abonos).
+     * Movimientos de una caja: gastos, fiados y abonos de Firestore más las ventas de Room.
      * Las ventas también están copiadas en Firestore, pero se cuentan una sola vez, desde Room.
      */
     fun movimientosDe(cajaId: String?): Flow<List<MovementEntity>> {
         val tienda = store.cuenta.value
         if (cajaId == null || tienda.isBlank()) return flowOf(emptyList())
         return combine(remotos.deCaja(tienda, cajaId), room.movementDao().observeByCaja(tienda, cajaId)) { nube, local ->
-            (nube.filter { it.type == MovementType.GASTO.name } + local.filter { it.type != MovementType.GASTO.name })
+            (nube.filter { it.type in BarrioRepository.EN_FIRESTORE } + local.filter { it.type !in BarrioRepository.EN_FIRESTORE })
                 .sortedByDescending { it.createdAt }
         }
     }

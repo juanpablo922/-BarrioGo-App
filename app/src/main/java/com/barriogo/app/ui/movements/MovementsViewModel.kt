@@ -3,7 +3,6 @@ package com.barriogo.app.ui.movements
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.barriogo.app.AppContainer
-import com.barriogo.app.data.ClientEntity
 import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.data.auth.Resultado
 import com.barriogo.app.domain.MovementType
@@ -14,12 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** M1 · Registrar y M2 · Libro: ventas, fiados y abonos (Room) junto con los gastos (Firestore). */
+/** M1 · Registrar y M2 · Libro: ventas (Room) junto con gastos, fiados y abonos (Firestore). */
 class MovementsViewModel(private val container: AppContainer) : ViewModel() {
     val movements: StateFlow<List<MovementEntity>> =
         container.repo.movements.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val clients: StateFlow<List<ClientEntity>> =
-        container.repo.clients.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Registro manual: queda en la caja abierta de Firestore (los gastos, en Firestore). */
     fun register(
@@ -45,16 +42,13 @@ class MovementsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun addClient(name: String, phone: String = "", onDone: (Long) -> Unit) {
-        viewModelScope.launch { onDone(container.repo.addClient(name, phone)) }
-    }
-
     /** Eliminar: queda en el historial tachado y deja de contar en los totales. */
     fun voidMovement(id: Long) {
         viewModelScope.launch {
             val perfil = container.perfilActivo() ?: return@launch
             // Los gastos viven en Firestore (id local negativo).
             gastoDe(id)?.let { g -> g.remoteId?.let { container.gastos.anular(it, perfil) }; return@launch }
+            fiadoDe(id)?.let { f -> f.remoteId?.let { container.fiados.anular(it, perfil) }; return@launch }
             container.repo.voidMovement(id)
             val remoteId = container.repo.movement(id)?.remoteId ?: return@launch
             container.enLaNube(perfil)?.let { container.movimientosRemotos.anular(it.first, remoteId, it.second) }
@@ -68,6 +62,13 @@ class MovementsViewModel(private val container: AppContainer) : ViewModel() {
                 g.remoteId?.let { container.gastos.editar(it, ReglasGasto.tipoDe(g.category, g.detail), amount, title, perfil) }
                 return@launch
             }
+            // Fiados y abonos viven en Firestore: el libro solo corrige el valor (lo demás, en la ficha del cliente).
+            fiadoDe(id)?.let { f ->
+                val remoteId = f.remoteId ?: return@launch
+                if (f.type == MovementType.FIADO.name) container.fiados.editarFiado(remoteId, f.detail, amount, perfil)
+                else container.fiados.editarAbono(remoteId, amount, PayMethod.valueOf(f.payMethod), perfil)
+                return@launch
+            }
             container.repo.editMovement(id, amount, title)
             val m = container.repo.movement(id)?.takeIf { it.remoteId != null } ?: return@launch
             container.enLaNube(perfil)?.let { container.movimientosRemotos.editar(it.first, m, it.second) }
@@ -76,4 +77,7 @@ class MovementsViewModel(private val container: AppContainer) : ViewModel() {
 
     private fun gastoDe(id: Long): MovementEntity? =
         if (id < 0) movements.value.firstOrNull { it.id == id && it.type == MovementType.GASTO.name } else null
+
+    private fun fiadoDe(id: Long): MovementEntity? =
+        if (id < 0) movements.value.firstOrNull { it.id == id && (it.type == MovementType.FIADO.name || it.type == MovementType.ABONO.name) } else null
 }

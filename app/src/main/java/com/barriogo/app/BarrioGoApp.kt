@@ -10,12 +10,14 @@ import com.barriogo.app.data.SessionStore
 import com.barriogo.app.data.auth.AuthRepository
 import com.barriogo.app.data.auth.Resultado
 import com.barriogo.app.data.caja.CajaRepository
+import com.barriogo.app.data.fiados.FiadosRepository
 import com.barriogo.app.data.movimientos.GastosRepository
 import com.barriogo.app.data.movimientos.MovimientosRemotos
 import com.barriogo.app.data.perfiles.PerfilesRepository
 import com.barriogo.app.notificaciones.AvisosCierre
 import kotlinx.coroutines.SupervisorJob
 import com.barriogo.app.domain.MovementType
+import com.barriogo.app.domain.PayMethod
 import com.barriogo.app.domain.ReglasGasto
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
@@ -26,6 +28,7 @@ import com.google.firebase.functions.functions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
@@ -54,8 +57,11 @@ class AppContainer(context: Context) {
     /** Gastos leídos y escritos en Firestore: registrar a mano, editar y anular. */
     val gastos = GastosRepository(store, caja, alcance, movimientosRemotos)
 
-    /** Perfiles, clientes y el libro (ventas, fiados y abonos de Room + gastos de Firestore). */
-    val repo = BarrioRepository(db, store.cuenta, gastos.gastos)
+    /** Fiados en Firestore: clientes, fiados y abonos (crear, leer, editar, cupo, pagar y anular). */
+    val fiados = FiadosRepository(store, caja, alcance, movimientosRemotos)
+
+    /** Perfiles y el libro (ventas de Room + gastos, fiados y abonos de Firestore). */
+    val repo = BarrioRepository(db, store.cuenta, combine(gastos.gastos, fiados.movimientos) { g, f -> g + f })
 
     init {
         // Al entrar con otra cuenta cambia la caja que se mira: los avisos de cierre se recalculan para ella.
@@ -75,16 +81,20 @@ class AppContainer(context: Context) {
     /**
      * Registra un movimiento en la caja abierta (M1, voz, escáner, fiados):
      * - Gasto: va a Firestore (GastosRepository), que es donde se leen los gastos.
-     * - Venta, fiado, abono: van a Room unidos a la caja de Firestore; las ventas además se copian a Firestore.
+     * - Fiado y abono: van a Firestore (FiadosRepository), con su cliente y el cupo revisado.
+     * - Venta: va a Room unida a la caja de Firestore y además se copia a Firestore.
      */
     suspend fun registrarMovimiento(m: MovementEntity): Resultado<Unit> {
         val perfil = perfilActivo() ?: return Resultado.Error("Vuelve a entrar con tu clave para continuar.")
-        if (m.type == MovementType.GASTO.name) {
-            return when (val r = gastos.registrar(ReglasGasto.tipoDe(m.category, m.detail), m.amount, m.title, perfil)) {
-                is Resultado.Ok -> Resultado.Ok(Unit)
-                is Resultado.Error -> r
-            }
+        val r: Resultado<Any>? = when (m.type) {
+            MovementType.GASTO.name -> gastos.registrar(ReglasGasto.tipoDe(m.category, m.detail), m.amount, m.title, perfil)
+            MovementType.FIADO.name -> m.clientId?.let { fiados.registrarFiado(it, m.detail.ifBlank { m.title }, m.amount, perfil, origenVoz = m.extra == "voz") }
+                ?: Resultado.Error("No se puede fiar sin saber a quién.", "invalid-argument")
+            MovementType.ABONO.name -> m.clientId?.let { fiados.registrarAbono(it, m.amount, PayMethod.valueOf(m.payMethod), perfil) }
+                ?: Resultado.Error("Elige el cliente que abona.", "invalid-argument")
+            else -> null
         }
+        if (r != null) return if (r is Resultado.Error) r else Resultado.Ok(Unit)
         val abierta = caja.cajaAbiertaUnaVez() ?: return Resultado.Error("Primero abre la caja del día.", "failed-precondition")
         val nube = enLaNube(perfil)
         val tipo = MovementType.valueOf(m.type)

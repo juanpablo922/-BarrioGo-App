@@ -2,6 +2,7 @@ package com.barriogo.app.data.movimientos
 
 import android.util.Log
 import com.barriogo.app.data.MovementEntity
+import com.barriogo.app.data.fiados.Cliente
 import com.barriogo.app.domain.ExpenseKind
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
@@ -24,9 +25,8 @@ import java.util.Date
  * firestore.rules → movimientoBienFormado(). Se escribe sin await: queda en la caché de Firestore
  * y sube cuando vuelve la señal.
  *
- * - Gastos: Firestore es su única fuente (se leen de aquí, no de Room).
+ * - Gastos, fiados y abonos: Firestore es su única fuente (se leen de aquí, no de Room).
  * - Ventas: viven en Room y se copian aquí para el comprobante del servidor.
- * - Fiados y abonos: solo en Room hasta que los clientes estén en Firestore (módulo de fiados).
  */
 class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore) {
 
@@ -34,7 +34,11 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
     fun gastos(tiendaId: String): Flow<List<MovementEntity>> =
         escuchar(db.collection("tiendas/$tiendaId/movimientos").whereEqualTo("tipo", "gasto"), tiendaId)
 
-    /** Movimientos de una caja (ventas y gastos que están en Firestore) para sus totales. */
+    /** Fiados y abonos de la tienda en tiempo real (de todas las cajas: un fiado se paga cualquier día). */
+    fun fiados(tiendaId: String): Flow<List<MovementEntity>> =
+        escuchar(db.collection("tiendas/$tiendaId/movimientos").whereIn("tipo", listOf("fiado", "abono")), tiendaId)
+
+    /** Movimientos de una caja (ventas, gastos, fiados y abonos que están en Firestore) para sus totales. */
     fun deCaja(tiendaId: String, cajaId: String): Flow<List<MovementEntity>> =
         escuchar(db.collection("tiendas/$tiendaId/movimientos").whereEqualTo("cajaId", cajaId), tiendaId)
 
@@ -54,7 +58,8 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
 
     fun sincroniza(tipo: MovementType) = tipo == MovementType.VENTA || tipo == MovementType.GASTO
 
-    fun crear(tiendaId: String, id: String, m: MovementEntity, cajaId: String, perfilId: String) {
+    /** [cliente] es obligatorio en fiados y abonos (firestore.rules: "No se puede fiar sin saber a quién"). */
+    fun crear(tiendaId: String, id: String, m: MovementEntity, cajaId: String, perfilId: String, cliente: Cliente? = null) {
         val datos = buildMap<String, Any?> {
             put("cajaId", cajaId)
             put("perfilId", perfilId)
@@ -62,26 +67,40 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
             put("tipo", tipo(m))
             put("monto", m.amount)
             put("efectoCaja", efectoCaja(m).toLong())
-            put("descripcion", m.title.trim().take(200))
-            put("origen", "manual")
+            put("descripcion", descripcion(m))
+            put("origen", if (m.extra == "voz") "voz" else "manual")
             put("estado", "activo")
             put("registradoEn", Timestamp(Date(m.createdAt)))
-            if (m.kind == MovementType.VENTA) put("metodoPago", if (m.pay == PayMethod.TRANSFERENCIA) "transferencia" else "efectivo")
+            if (m.kind == MovementType.VENTA || m.kind == MovementType.ABONO) put("metodoPago", metodoPago(m))
             if (m.kind == MovementType.GASTO) put("categoriaGastoId", categoria(m))
+            if (cliente != null && (m.kind == MovementType.FIADO || m.kind == MovementType.ABONO)) {
+                put("clienteId", cliente.remoteId)
+                put("clienteNombre", cliente.name.take(120))
+            }
+            // Abono a un solo fiado: las reglas revisan que exista y sea del mismo cliente
+            if (m.kind == MovementType.ABONO && m.fiadoId != null) put("fiadoId", m.fiadoId)
         }
         db.document("tiendas/$tiendaId/movimientos/$id").set(datos)
             .addOnFailureListener { Log.w(TAG, "Firestore rechazó el movimiento $id", it) }
     }
 
-    /** M1 · Editar / G2 · Editar gasto: siempre con actualizadoPor y actualizadoEn (el historial lo arma el servidor). */
+    /**
+     * M1 · Editar / G2 · Editar gasto / editar fiado o abono: siempre con actualizadoPor y
+     * actualizadoEn (el historial lo arma el servidor). Si cambia el método de pago, también
+     * efectoCaja en el mismo update.
+     */
     fun editar(tiendaId: String, m: MovementEntity, perfilId: String) {
         val id = m.remoteId ?: return
         val cambios = buildMap<String, Any?> {
             put("monto", m.amount)
-            put("descripcion", m.title.trim().take(200))
+            put("descripcion", descripcion(m))
             put("actualizadoPor", perfilId)
             put("actualizadoEn", Timestamp.now())
             if (m.kind == MovementType.GASTO) put("categoriaGastoId", categoria(m))
+            if (m.kind == MovementType.VENTA || m.kind == MovementType.ABONO) {
+                put("metodoPago", metodoPago(m))
+                put("efectoCaja", efectoCaja(m).toLong())
+            }
         }
         db.document("tiendas/$tiendaId/movimientos/$id").update(cambios)
             .addOnFailureListener { Log.w(TAG, "Firestore rechazó la edición de $id", it) }
@@ -99,6 +118,12 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
             ),
         ).addOnFailureListener { Log.w(TAG, "Firestore rechazó la anulación de $remoteId", it) }
     }
+
+    /** En un fiado la descripción es "¿Qué se llevó?" (detail); en lo demás, el concepto (title). */
+    private fun descripcion(m: MovementEntity): String =
+        (if (m.kind == MovementType.FIADO) m.detail else m.title).trim().take(200)
+
+    private fun metodoPago(m: MovementEntity) = if (m.pay == PayMethod.TRANSFERENCIA) "transferencia" else "efectivo"
 
     private fun tipo(m: MovementEntity) = when (m.kind) {
         MovementType.VENTA -> "venta"
@@ -140,12 +165,24 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
             }
             val monto = d.getLong("monto") ?: return null
             val categoria = d.getString("categoriaGastoId")?.let { id -> ExpenseKind.entries.firstOrNull { ReglasGasto.categoriaId(it) == id } }
+            val descripcion = d.getString("descripcion")
             return MovementEntity(
                 id = idLocal(d.id),
                 type = tipo.name,
                 amount = if (tipo == MovementType.AJUSTE && d.getLong("efectoCaja") == -1L) -monto else monto,
-                title = d.getString("descripcion") ?: tipo.name.lowercase().replaceFirstChar { it.uppercase() },
-                detail = categoria?.detail ?: "",
+                // Fiados y abonos se pintan como antes en Room: title fijo y lo que se llevó en detail.
+                title = when (tipo) {
+                    MovementType.FIADO -> "Fiado"
+                    MovementType.ABONO -> "Abono"
+                    else -> descripcion ?: tipo.name.lowercase().replaceFirstChar { it.uppercase() }
+                },
+                detail = when (tipo) {
+                    MovementType.FIADO -> descripcion.orEmpty()
+                    MovementType.ABONO -> "Abono a fiado"
+                    else -> categoria?.detail ?: ""
+                },
+                clientId = d.getString("clienteId")?.let(Cliente::idLocal),
+                fiadoId = d.getString("fiadoId"),
                 payMethod = if (d.getString("metodoPago") == "transferencia") PayMethod.TRANSFERENCIA.name else PayMethod.EFECTIVO.name,
                 profileId = 0,
                 profileName = d.getString("perfilNombre").orEmpty(),

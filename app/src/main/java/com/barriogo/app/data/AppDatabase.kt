@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProfileEntity::class, ClientEntity::class, MovementEntity::class, CashSessionEntity::class, ArqueoEntity::class,
         CashChangeEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -72,9 +72,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v6 · Un abono puede ir dirigido a un solo fiado (fiadoId). Fiados y abonos ya viven en Firestore. */
+        private val MIGRACION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE movements ADD COLUMN fiadoId TEXT")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "barriogo.db")
-                .addMigrations(MIGRACION_1_2, MIGRACION_2_3, MIGRACION_3_4, MIGRACION_4_5)
+                .addMigrations(MIGRACION_1_2, MIGRACION_2_3, MIGRACION_3_4, MIGRACION_4_5, MIGRACION_5_6)
                 .build()
     }
 }
