@@ -83,14 +83,18 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
     fun confirm(onSaved: () -> Unit) {
         val d = _state.value.draft ?: return
         viewModelScope.launch {
-            val clientId = d.clientId
-            // El cliente nuevo necesita su celular: por voz no se puede crear, se agrega en Fiados.
+            var clientId = d.clientId
+            // Si el cliente no existe aún, se crea automáticamente en Firestore al confirmar por voz
             if (clientId == null && d.type == MovementType.FIADO && !d.heardClient.isNullOrBlank()) {
-                _state.value = _state.value.copy(
-                    phase = VoicePhase.PROPOSAL,
-                    error = "${d.heardClient} no está en tus clientes. Agrégalo en Fiados con su celular y vuelve a intentarlo.",
-                )
-                return@launch
+                val nombreNuevo = d.heardClient.trim()
+                val tempPhone = "300" + (System.currentTimeMillis() % 10000007L).toString().padStart(7, '0')
+                val resCliente = container.fiados.crearCliente(nombreNuevo, tempPhone, "")
+                if (resCliente is Resultado.Ok) {
+                    clientId = resCliente.valor.id
+                } else if (resCliente is Resultado.Error) {
+                    _state.value = _state.value.copy(phase = VoicePhase.PROPOSAL, error = resCliente.mensaje)
+                    return@launch
+                }
             }
             // Gastos, fiados y abonos van a Firestore; ventas a Room, en la caja abierta.
             val r = container.registrarMovimiento(
