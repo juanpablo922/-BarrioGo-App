@@ -142,37 +142,66 @@ object MovementAgent {
         }
 
         // ---- Fiado: ¿a quién? ----
+        val CLIENT_DELIMITERS = setOf(
+            "en", "de", "del", "por", "valen", "vale", "costo", "costaron", "cuesta", "pesos", "peso", "mil",
+            "un", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+            "fio", "fiado", "fiar", "cobre", "cobrar", "llevo", "lleva", "llevaron", "compro", "compraron",
+        )
+
         var candIdx = -1
         for (i in tokens.indices) {
             val t = tokens[i]
             val cond = (t == "para" || t == "a" || t == "al") && i + 1 < tokens.size && i > 0 || (t == "para" && i + 1 < tokens.size)
             if (cond && (i + 1) !in exclude && tokens[i + 1] != ",") { candIdx = i + 1; break }
         }
+
+        // Si no hubo "a" / "para", buscar después de palabras gatillo de fiado (ej. "fiado Mateo Ramírez...")
+        if (candIdx < 0) {
+            for (i in tokens.indices) {
+                if (tokens[i] in FIADO_WORDS && i + 1 < tokens.size && (i + 1) !in exclude) {
+                    candIdx = i + 1
+                    break
+                }
+            }
+        }
+
         val nameIdx = HashSet<Int>()
         var client: ClientRef? = null
         var heard: String? = null
+
         if (candIdx >= 0) {
-            val window = ArrayList<Int>()
-            var k = candIdx
-            while (k < tokens.size && window.size < 2 && tokens[k] != "," && k !in exclude &&
-                tokens[k] != "en" && tokens[k] != "de" && tokens[k] != "por"
-            ) { window.add(k); k += 1 }
-            for (w in window) {
-                val c = ClientMatcher.matchToken(tokens[w], clients)
-                if (c != null) { client = c; nameIdx.add(w); break }
-            }
-            if (client == null && window.isNotEmpty()) {
-                heard = Txt.cap(tokens[window[0]])
-                nameIdx.add(window[0])
+            val matchResult = ClientMatcher.matchWindow(tokens, candIdx, clients, exclude, CLIENT_DELIMITERS)
+            if (matchResult != null) {
+                client = matchResult.first
+                nameIdx.addAll(matchResult.second)
+            } else {
+                // No coincidió con ningún cliente existente: capturar el Nombre + Apellido completo
+                val windowIndices = ArrayList<Int>()
+                var k = candIdx
+                while (k < tokens.size && windowIndices.size < 3 && k !in exclude &&
+                    tokens[k] != "," && tokens[k] !in CLIENT_DELIMITERS
+                ) {
+                    windowIndices.add(k)
+                    k++
+                }
+                if (windowIndices.isNotEmpty()) {
+                    heard = windowIndices.joinToString(" ") { Txt.cap(tokens[it]) }
+                    nameIdx.addAll(windowIndices)
+                }
             }
         } else {
+            // Escaneo general por si el nombre está en cualquier otra posición
             for (i in tokens.indices) {
-                val t = tokens[i]
-                if (i in exclude || t in STOP || t == ",") continue
-                val c = ClientMatcher.matchToken(t, clients)
-                if (c != null) { client = c; nameIdx.add(i); break }
+                if (i in exclude || tokens[i] in STOP || tokens[i] == ",") continue
+                val matchResult = ClientMatcher.matchWindow(tokens, i, clients, exclude, CLIENT_DELIMITERS)
+                if (matchResult != null) {
+                    client = matchResult.first
+                    nameIdx.addAll(matchResult.second)
+                    break
+                }
             }
         }
+
         val hasSignal = spans.isNotEmpty() || client != null || candIdx >= 0 || tokens.any { it in FIADO_WORDS }
         if (!hasSignal) return AgentResult.NotUnderstood("No parece un fiado")
         val itemNames = splitItems(tokens, exclude + nameIdx).map { Txt.cap(it) }

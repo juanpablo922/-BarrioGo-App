@@ -103,6 +103,20 @@ class AgentTest {
         assertTrue(DraftIssue.CLIENT_UNKNOWN in d.issues)
     }
 
+    @Test fun fiado_cliente_con_nombre_y_apellido_que_no_existe() {
+        val d = ok("Fiado para Mateo Ramírez, arroz y leche, 24 mil", MovementType.FIADO)
+        assertNull(d.clientId)
+        assertEquals("Mateo Ramirez", d.heardClient)
+        assertTrue(DraftIssue.CLIENT_UNKNOWN in d.issues)
+    }
+
+    @Test fun fiado_cliente_con_nombre_y_apellido_existente() {
+        val d = ok("Le fío a Marta Ramírez 12 mil en gaseosas", MovementType.FIADO)
+        assertEquals(1L, d.clientId)
+        assertEquals(12000L, d.amount)
+        assertEquals(listOf("Gaseosas"), d.items)
+    }
+
     // ---------- Edición por voz ----------
     @Test fun editar_venta_por_voz() {
         val base = MovementDraft(MovementType.VENTA, 2, listOf("Gaseosa"), 8000)
