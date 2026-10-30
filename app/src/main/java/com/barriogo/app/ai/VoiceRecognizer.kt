@@ -8,9 +8,9 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
 /**
- * Envoltorio delgado sobre [SpeechRecognizer] (paquete android.speech, parte de Android).
- * Aquí termina la "percepción": convierte audio en texto. Toda la interpretación (qué tipo de
- * movimiento es, qué campos tiene) la hace [MovementAgent], no esta clase.
+ * Envoltorio sobre [SpeechRecognizer] (paquete android.speech, parte nativa de Android).
+ * Módulo de Percepción de Voz: convierte audio en texto plano en idioma español (es-CO).
+ * Toda la interpretación lógica la realiza [MovementAgent].
  */
 class VoiceRecognizer(private val context: Context) {
     private var recognizer: SpeechRecognizer? = null
