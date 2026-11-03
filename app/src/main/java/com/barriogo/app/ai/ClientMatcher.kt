@@ -88,29 +88,33 @@ object ClientMatcher {
 
         if (windowIndices.isEmpty()) return null
 
-        // Probar primero la frase más larga (ej. 3 palabras, luego 2, luego 1)
+        // 1. Probar coincidencia de nombre completo con la ventana más larga disponible (3 palabras o 2 palabras)
         for (len in windowIndices.size downTo 1) {
             val subIndices = windowIndices.take(len)
             val phrase = subIndices.joinToString(" ") { tokens[it] }
+            val cleanPhrase = Txt.stripAccents(phrase.lowercase().trim())
 
-            // 1. Priorizar coincidencia exacta o de alta similitud con el nombre completo
             for (c in clients) {
                 val cleanName = Txt.stripAccents(c.name.lowercase().trim())
-                val cleanPhrase = Txt.stripAccents(phrase.lowercase().trim())
                 if (similarity(cleanPhrase, cleanName) >= THRESHOLD) {
                     return Pair(c, subIndices)
                 }
             }
         }
 
-        // 2. Si no hay coincidencia con el nombre completo, probar con matchPhrase
-        for (len in windowIndices.size downTo 1) {
-            val subIndices = windowIndices.take(len)
-            val phrase = subIndices.joinToString(" ") { tokens[it] }
-            val matched = matchPhrase(phrase, clients)
-            if (matched != null) {
-                return Pair(matched, subIndices)
-            }
+        // 2. Si la ventana tiene más de 1 palabra (ej. "mateo ramirez") y ningún cliente en la lista
+        // coincide con el nombre completo "mateo ramirez", NO recortar a "mateo" para emparejarlo con
+        // un cliente viejo de un solo nombre. Se devuelve null para crear el cliente completo con apellido.
+        if (windowIndices.size > 1) {
+            return null
+        }
+
+        // 3. Si sólo había 1 palabra en la ventana (ej. "mateo"), probar si coincide con algún cliente
+        val subIndices = windowIndices.take(1)
+        val phrase = tokens[subIndices[0]]
+        val matched = matchPhrase(phrase, clients)
+        if (matched != null) {
+            return Pair(matched, subIndices)
         }
 
         return null

@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Fiados en Firestore: clientes (tiendas/{t}/clientes) y sus fiados y abonos
@@ -44,9 +46,17 @@ class FiadosRepository(
     private val remotos: MovimientosRemotos = MovimientosRemotos(),
     private val clientesRemotos: ClientesRemotos = ClientesRemotos(),
 ) {
+    private val clientesLocales = ConcurrentHashMap<Long, Cliente>()
+
     /** Clientes de la tienda activa, por nombre. */
     val clientes: Flow<List<Cliente>> = store.cuenta
-        .flatMapLatest { tienda -> if (tienda.isBlank()) flowOf(emptyList()) else clientesRemotos.clientes(tienda) }
+        .flatMapLatest { tienda ->
+            if (tienda.isBlank()) flowOf(emptyList())
+            else clientesRemotos.clientes(tienda).map { listaNube ->
+                val mapa = (listaNube + clientesLocales.values).associateBy { it.id }
+                mapa.values.sortedBy { ClientesRemotos.busqueda(it.name) }
+            }
+        }
         .shareIn(alcance, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     /** Fiados y abonos de la tienda activa, del más nuevo al más viejo (también los anulados). */
@@ -54,7 +64,7 @@ class FiadosRepository(
         .flatMapLatest { tienda -> if (tienda.isBlank()) flowOf(emptyList()) else remotos.fiados(tienda) }
         .shareIn(alcance, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
-    suspend fun cliente(id: Long): Cliente? = clientes.first().firstOrNull { it.id == id }
+    suspend fun cliente(id: Long): Cliente? = clientes.first().firstOrNull { it.id == id } ?: clientesLocales[id]
 
     /** Estado de cuenta del cliente con lo que hay ahora en la caché. */
     suspend fun cuenta(id: Long): FiadoPendiente? {
@@ -74,6 +84,7 @@ class FiadosRepository(
             id = Cliente.idLocal(remoteId), remoteId = remoteId,
             name = nombre.trim(), phone = celular, address = direccion.trim(),
         )
+        clientesLocales[nuevo.id] = nuevo
         clientesRemotos.crear(tienda, nuevo)
         return Resultado.Ok(nuevo)
     }
