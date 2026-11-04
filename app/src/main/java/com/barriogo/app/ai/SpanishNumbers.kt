@@ -20,6 +20,9 @@ object Txt {
         t = t.replace(Regex("[¿?¡!\"“”«»()]"), " ")
         t = t.replace(Regex("(?<!\\d),|,(?!\\d)"), " , ")
         t = t.replace(Regex("\\.(?!\\d)|(?<!\\d)\\."), " ")
+        // Separar números pegados a unidades o palabras (ej: "14mil" -> "14 mil", "20k" -> "20 k")
+        t = t.replace(Regex("(\\d+)(mil|k|lucas|llon|llones)"), "$1 $2")
+        t = t.replace(Regex("(\\d+)([a-zA-ZáéíóúñÁÉÍÓÚÑ]+)"), "$1 $2")
         return t.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
     }
 }

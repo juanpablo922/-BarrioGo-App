@@ -146,20 +146,46 @@ object MovementAgent {
             "en", "de", "del", "por", "valen", "vale", "costo", "costaron", "cuesta", "pesos", "peso", "mil",
             "un", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
             "fio", "fiado", "fiar", "cobre", "cobrar", "llevo", "lleva", "llevaron", "compro", "compraron",
+            "debe", "pidio", "pidieron", "cuanto", "cuantos", "se",
         )
 
+        val ACTION_VERBS = setOf("se", "llevo", "lleva", "llevaron", "debe", "pidio", "compro", "compraron", "fio", "fiar")
+
         var candIdx = -1
+
+        // Heurística 1: Preposiciones explícitas de cliente ("a", "para", "al", o "de" tras "fiado")
         for (i in tokens.indices) {
             val t = tokens[i]
-            val cond = (t == "para" || t == "a" || t == "al") && i + 1 < tokens.size && i > 0 || (t == "para" && i + 1 < tokens.size)
+            val isDeClient = t == "de" && i > 0 && tokens[i - 1] in FIADO_WORDS
+            val cond = (t == "para" || t == "a" || t == "al" || isDeClient) && i + 1 < tokens.size && i > 0 || (t == "para" && i + 1 < tokens.size)
             if (cond && (i + 1) !in exclude && tokens[i + 1] != ",") { candIdx = i + 1; break }
         }
 
-        // Si no hubo "a" / "para", buscar después de palabras gatillo de fiado (ej. "fiado Mateo Ramírez...")
+        // Heurística 2: Tras palabras gatillo de fiado (ej. "fiado Mateo Ramírez...")
         if (candIdx < 0) {
             for (i in tokens.indices) {
                 if (tokens[i] in FIADO_WORDS && i + 1 < tokens.size && (i + 1) !in exclude) {
                     candIdx = i + 1
+                    break
+                }
+            }
+        }
+
+        // Heurística 3: Verbos de acción al medio (ej. "Laura Estefanía se llevó 14 mil...")
+        if (candIdx < 0) {
+            for (i in tokens.indices) {
+                if (tokens[i] in ACTION_VERBS && i > 0 && 0 !in exclude) {
+                    candIdx = 0
+                    break
+                }
+            }
+        }
+
+        // Heurística 4: Modo Fiado activo y frase directa (ej. "Laura Estefanía 14mil de pollo")
+        if (candIdx < 0 && (mode == MovementType.FIADO || tokens.any { it in FIADO_WORDS })) {
+            for (i in tokens.indices) {
+                if (i !in exclude && tokens[i] != "," && tokens[i] !in STOP) {
+                    candIdx = i
                     break
                 }
             }

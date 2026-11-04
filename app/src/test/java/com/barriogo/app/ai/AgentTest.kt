@@ -117,6 +117,22 @@ class AgentTest {
         assertEquals(listOf("Gaseosas"), d.items)
     }
 
+    @Test fun fiado_directo_sin_preposicion_y_monto_pegado() {
+        val d = ok("Laura Estefanía 14mil de pollo", MovementType.FIADO)
+        assertNull(d.clientId)
+        assertEquals("Laura Estefania", d.heardClient)
+        assertEquals(14000L, d.amount)
+        assertEquals(listOf("Pollo"), d.items)
+    }
+
+    @Test fun fiado_con_verbo_se_llevo() {
+        val d = ok("Laura Estefanía se llevó 14 mil de pollo", MovementType.FIADO)
+        assertNull(d.clientId)
+        assertEquals("Laura Estefania", d.heardClient)
+        assertEquals(14000L, d.amount)
+        assertEquals(listOf("Pollo"), d.items)
+    }
+
     // ---------- Edición por voz ----------
     @Test fun editar_venta_por_voz() {
         val base = MovementDraft(MovementType.VENTA, 2, listOf("Gaseosa"), 8000)
