@@ -13,12 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,7 +47,7 @@ import kotlin.math.abs
 
 /**
  * M2 · Movimientos (Figma): filtros de tiempo y tipo, resumen con el neto y filas planas.
- * El lápiz de cada fila abre corregir/eliminar (lo eliminado queda tachado y ya no se edita).
+ * Tocar una fila abre corregir/eliminar (lo eliminado queda tachado y ya no se edita).
  */
 @Composable
 fun MovementsBookScreen(
@@ -146,19 +141,8 @@ fun MovementsBookScreen(
                             divisor = i != filteredList.lastIndex,
                             modifier = Modifier.testTag("movement_card_${m.id}"),
                             nota = estado(m),
-                            // Lápiz amarillo: corregir o eliminar (lo eliminado ya no se edita)
-                            accion = if (m.voided) null else ({
-                                Box(
-                                    Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .clickable { editando = m }
-                                        .testTag("edit_movement_${m.id}"),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(Icons.Filled.Edit, "Editar o eliminar", tint = FigmaColors.AmarilloBoton, modifier = Modifier.size(20.dp))
-                                }
-                            }),
+                            // Tocar la fila: corregir o eliminar (lo eliminado ya no se edita)
+                            onClick = if (m.voided) null else ({ editando = m }),
                         )
                     }
                 }

@@ -76,8 +76,6 @@ fun FilaMovimientoFigma(
     /** "· Eliminado 10:40", "· Editado (antes $ 5.000)". */
     nota: String = "",
     onClick: (() -> Unit)? = null,
-    /** Algo al final de la fila, después del monto (el lápiz de Movimientos). */
-    accion: (@Composable () -> Unit)? = null,
 ) {
     val e = estilo(m)
     val tachado = if (m.voided) TextDecoration.LineThrough else TextDecoration.None
@@ -109,7 +107,6 @@ fun FilaMovimientoFigma(
                 if (ocultarMonto) Money.HIDDEN else e.signo + Money.cop(abs(m.amount)),
                 color = e.color, fontSize = 15.sp, fontWeight = FontWeight.Bold, textDecoration = tachado,
             )
-            accion?.invoke()
         }
         if (divisor) Box(Modifier.fillMaxWidth().height(1.dp).background(FigmaColors.Tarjeta))
     }
