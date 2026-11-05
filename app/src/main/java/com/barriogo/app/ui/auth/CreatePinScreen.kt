@@ -78,6 +78,8 @@ fun CreatePinScreen(
                 )
             }
 
+            Spacer(Modifier.height(24.dp))
+
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 NumericKeypad(
                     onDigit = { digit ->

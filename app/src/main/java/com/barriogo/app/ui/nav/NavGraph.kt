@@ -215,7 +215,8 @@ fun BarrioGoNavGraph() {
                         onCreateProfile = { nav.navigate(Routes.CREATE_PIN) },
                         onLogout = {
                             app.container.signOutOfStore()
-                            nav.navigate(Routes.LOGIN) { popUpTo(Routes.PROFILE_SELECTOR) { inclusive = true } }
+                            // Se vacía toda la pila: con "atrás" no se vuelve a Inicio sin ingresar de nuevo.
+                            nav.navigate(Routes.LOGIN) { popUpTo(nav.graph.id) { inclusive = true } }
                         }
                     )
                 }

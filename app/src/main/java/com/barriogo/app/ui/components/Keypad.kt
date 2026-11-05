@@ -19,11 +19,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.barriogo.app.ui.theme.BarrioColors
 
-/** Teclado numérico 0-9 con diseño circular del prototipo. */
+private val TECLA = 68.dp
+private val TECLA_MINIMA = 48.dp
+private val CASILLA = 54.dp
+private val ENTRE_CASILLAS = 16.dp
+
+/** Teclado numérico 0-9 con diseño circular del prototipo. Las teclas se encogen si no caben en el espacio disponible. */
 @Composable
 fun NumericKeypad(
     onDigit: (Char) -> Unit,
@@ -32,39 +39,43 @@ fun NumericKeypad(
     leftActionIcon: (@Composable () -> Unit)? = null
 ) {
     val rows = listOf("123", "456", "789", " 0⌫")
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        rows.forEach { row ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                row.forEach { ch ->
-                    when (ch) {
-                        ' ' -> {
-                            if (leftActionIcon != null) {
-                                KeyButton(onClick = {}) { leftActionIcon() }
-                            } else {
-                                SpacerKey()
+    BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+        // Medida en teclas, contando separaciones: 3,3 de ancho y 4,62 de alto
+        val tecla = minOf(TECLA, maxWidth / 3.3f, maxHeight / 4.62f).coerceAtLeast(TECLA_MINIMA)
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(tecla * 14f / 68f)
+        ) {
+            rows.forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    row.forEach { ch ->
+                        when (ch) {
+                            ' ' -> {
+                                if (leftActionIcon != null) {
+                                    KeyButton(tecla, onClick = {}) { leftActionIcon() }
+                                } else {
+                                    SpacerKey(tecla)
+                                }
                             }
-                        }
-                        '⌫' -> KeyButton(onClick = onBackspace) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Backspace,
-                                contentDescription = "Borrar",
-                                tint = BarrioColors.TextHint,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        else -> KeyButton(onClick = { onDigit(ch) }) {
-                            Text(
-                                ch.toString(),
-                                color = BarrioColors.TextPrimary,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            '⌫' -> KeyButton(tecla, onClick = onBackspace) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Backspace,
+                                    contentDescription = "Borrar",
+                                    tint = BarrioColors.TextHint,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            else -> KeyButton(tecla, onClick = { onDigit(ch) }) {
+                                Text(
+                                    ch.toString(),
+                                    color = BarrioColors.TextPrimary,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
@@ -74,16 +85,16 @@ fun NumericKeypad(
 }
 
 @Composable
-private fun SpacerKey() {
-    Box(modifier = Modifier.size(68.dp))
+private fun SpacerKey(tecla: Dp) {
+    Box(modifier = Modifier.size(tecla))
 }
 
 @Composable
-private fun KeyButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun KeyButton(tecla: Dp, onClick: () -> Unit, content: @Composable () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
-            .size(68.dp)
+            .size(tecla)
             .clip(CircleShape)
             .background(BarrioColors.CardBg)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
@@ -94,24 +105,26 @@ private fun KeyButton(onClick: () -> Unit, content: @Composable () -> Unit) {
 /** 4 Casillas cuadradas de PIN con borde dorado como en el video Figma. */
 @Composable
 fun PinSquares(length: Int = 4, filled: Int, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        repeat(length) { i ->
-            val isFilled = i < filled
-            Box(
-                Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isFilled) BarrioColors.Yellow else Color.Transparent)
-                    .border(
-                        width = 1.5.dp,
-                        color = if (isFilled) BarrioColors.Yellow else BarrioColors.YellowStroke,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-            )
+    BoxWithConstraints(modifier) {
+        val casilla = minOf(CASILLA, (maxWidth - ENTRE_CASILLAS * (length - 1)) / length)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(ENTRE_CASILLAS),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            repeat(length) { i ->
+                val isFilled = i < filled
+                Box(
+                    Modifier
+                        .size(casilla)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isFilled) BarrioColors.Yellow else Color.Transparent)
+                        .border(
+                            width = 1.5.dp,
+                            color = if (isFilled) BarrioColors.Yellow else BarrioColors.YellowStroke,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                )
+            }
         }
     }
 }

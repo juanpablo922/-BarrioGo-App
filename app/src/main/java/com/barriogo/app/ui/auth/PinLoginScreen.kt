@@ -71,22 +71,23 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
         }
     }
 
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(BarrioColors.Background)
             .systemBarsPadding()
             .testTag("pin_login_screen")
     ) {
+        // Celular bajo o con pantalla ampliada: se aprietan los espacios para que el teclado quepa
+        val compacta = maxHeight < 720.dp
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(if (compacta) 4.dp else 16.dp))
 
                 // Top Bar: Back arrow
                 Row(
@@ -103,12 +104,12 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(if (compacta) 0.dp else 12.dp))
 
                 // Profile Avatar Circle
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
+                        .size(if (compacta) 52.dp else 68.dp)
                         .clip(CircleShape)
                         .background(BarrioColors.Surface)
                         .border(1.5.dp, BarrioColors.YellowStroke, CircleShape),
@@ -117,12 +118,12 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     Text(
                         profile?.initial ?: "",
                         color = BarrioColors.TextPrimary,
-                        fontSize = 26.sp,
+                        fontSize = if (compacta) 20.sp else 26.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(if (compacta) 6.dp else 12.dp))
 
                 Text(
                     profile?.name.orEmpty(),
@@ -131,7 +132,7 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(if (compacta) 2.dp else 6.dp))
 
                 Text(
                     "Ingresa tu clave de 4 números",
@@ -139,7 +140,7 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     fontSize = 14.sp
                 )
 
-                Spacer(Modifier.height(30.dp))
+                Spacer(Modifier.height(if (compacta) 14.dp else 30.dp))
 
                 PinSquares(
                     length = 4,
@@ -157,7 +158,10 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(if (compacta) 14.dp else 24.dp))
+
+            // El teclado va abajo y usa lo que quede libre: nunca se pega a los cuadros
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
                 NumericKeypad(
                     onDigit = { d ->
                         if (pin.length < 4) {
@@ -193,8 +197,10 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     } else null,
                     modifier = Modifier.testTag("pin_keypad")
                 )
+            }
 
-                Spacer(Modifier.height(24.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(if (compacta) 10.dp else 24.dp))
 
                 Text(
                     "Olvidé mi clave",
@@ -203,7 +209,7 @@ fun PinLoginScreen(profileId: Long, onSuccess: () -> Unit, onBack: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clickable { showForgotPinDialog = true }
-                        .padding(bottom = 24.dp)
+                        .padding(bottom = if (compacta) 10.dp else 24.dp)
                         .testTag("forgot_pin_button")
                 )
             }
