@@ -65,6 +65,8 @@ data class MovementEntity(
     val cajaId: String? = null,
     /** Solo en abonos: id en Firestore del fiado al que va dirigido ("solo quiero saldar este"). null = a toda la deuda. */
     val fiadoId: String? = null,
+    /** A quién fue. En una venta es solo una referencia: no lleva clientId porque no genera deuda. */
+    val clientName: String? = null,
 )
 
 /**

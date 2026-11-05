@@ -14,6 +14,9 @@ Permite registrar ventas, gastos y fiados en lenguaje natural hablado en españo
   - Convierte la onda de audio capturada en texto sin procesamiento externo en la nube.
 - **Agente de Movimientos (Interpretación):** `MovementAgent.kt`
   - Analiza la frase en lenguaje natural e infiere el tipo de movimiento: **Venta**, **Gasto** o **Fiado**.
+  - Lo que dice la frase manda sobre la pestaña elegida: *"Venta de..."* es venta aunque esté abierta la pestaña Fiado.
+  - Suma varios valores en una frase y reconoce al cliente en ventas (*"Venta de 15 mil de leche y 25 mil de agua a Luisa Castro"* → $ 40.000). Un total dicho (*"son 40 mil"*) no se suma otra vez.
+  - En una venta, el cliente es solo una referencia: no genera deuda ni crea una ficha de cliente.
   - Soporta **edición por voz** (*"Eran 3 gaseosas, no 2"*).
 - **Procesamiento de Números:** `SpanishNumbers.kt`
   - Convierte texto numérico hablado (*"doce mil pesos"*, *"dos libras"*) a enteros.

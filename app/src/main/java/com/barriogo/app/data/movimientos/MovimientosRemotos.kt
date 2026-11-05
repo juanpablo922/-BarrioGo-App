@@ -119,9 +119,15 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
         ).addOnFailureListener { Log.w(TAG, "Firestore rechazó la anulación de $remoteId", it) }
     }
 
-    /** En un fiado la descripción es "¿Qué se llevó?" (detail); en lo demás, el concepto (title). */
-    private fun descripcion(m: MovementEntity): String =
-        (if (m.kind == MovementType.FIADO) m.detail else m.title).trim().take(200)
+    /**
+     * En un fiado la descripción es "¿Qué se llevó?" (detail); en lo demás, el concepto (title).
+     * El cliente de una venta va aquí porque clienteId y clienteNombre son de fiados y abonos.
+     */
+    private fun descripcion(m: MovementEntity): String = when {
+        m.kind == MovementType.FIADO -> m.detail
+        m.kind == MovementType.VENTA && !m.clientName.isNullOrBlank() -> "${m.title} · ${m.clientName}"
+        else -> m.title
+    }.trim().take(200)
 
     private fun metodoPago(m: MovementEntity) = if (m.pay == PayMethod.TRANSFERENCIA) "transferencia" else "efectivo"
 
@@ -182,6 +188,7 @@ class MovimientosRemotos(private val db: FirebaseFirestore = Firebase.firestore)
                     else -> categoria?.detail ?: ""
                 },
                 clientId = d.getString("clienteId")?.let(Cliente::idLocal),
+                clientName = d.getString("clienteNombre"),
                 fiadoId = d.getString("fiadoId"),
                 payMethod = if (d.getString("metodoPago") == "transferencia") PayMethod.TRANSFERENCIA.name else PayMethod.EFECTIVO.name,
                 profileId = 0,

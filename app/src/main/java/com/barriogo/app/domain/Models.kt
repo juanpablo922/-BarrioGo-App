@@ -84,3 +84,13 @@ fun MovementEntity.cashDelta(): Long {
 
 /** Texto principal para mostrar: "2 × Gaseosa" o el título. */
 fun MovementEntity.label(): String = if (kind == MovementType.VENTA && quantity > 1) "$quantity × $title" else title
+
+/** Título en las listas de movimientos: "Luisa Castro · Leche y Agua". Sin cliente, el texto de siempre. */
+fun MovementEntity.titleWithClient(): String {
+    val cliente = clientName?.takeIf { it.isNotBlank() } ?: return label()
+    val concepto = when (kind) {
+        MovementType.FIADO -> detail
+        else -> label()
+    }
+    return if (concepto.isBlank()) cliente else "$cliente · $concepto"
+}

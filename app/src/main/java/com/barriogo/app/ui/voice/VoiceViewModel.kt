@@ -113,7 +113,9 @@ class VoiceViewModel(private val container: AppContainer) : ViewModel() {
                     },
                     quantity = d.quantity,
                     payMethod = d.payMethod.name,
-                    clientId = clientId,
+                    // Una venta solo guarda el nombre: con clientId contaría como cliente de fiados
+                    clientId = clientId.takeIf { d.type == MovementType.FIADO },
+                    clientName = d.clientName.takeIf { d.type == MovementType.VENTA },
                     profileId = profileId,
                     profileName = profileName,
                     createdAt = System.currentTimeMillis(),

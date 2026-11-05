@@ -78,7 +78,8 @@ object SpanishNumbers {
     private fun smallAfter(tokens: List<String>, j: Int): Pair<Long, Int> {
         if (j >= tokens.size) return Pair(0L, j)
         val first = tokens[j]
-        if (smallDigitsRe.matches(first)) return Pair(first.toLong(), j + 1)
+        // "15 mil 25 mil" son dos valores, no 15.025
+        if (smallDigitsRe.matches(first)) return if (tokens.getOrNull(j + 1) in THOUSAND) Pair(0L, j) else Pair(first.toLong(), j + 1)
         var cur = 0
         var k = j
         var got = false

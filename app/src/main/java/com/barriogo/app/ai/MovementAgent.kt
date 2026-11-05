@@ -13,8 +13,14 @@ data class MovementDraft(
     val clientName: String? = null,      // nombre del cliente existente o el que se entendió
     val heardClient: String? = null,     // nombre entendido que NO está en la lista de clientes
     val payMethod: PayMethod = PayMethod.EFECTIVO,
+    val valores: List<Long> = emptyList(), // lo que suma [amount] cuando se dijeron varios valores
 ) {
     val itemText: String get() = ItemsText.join(items)
+
+    /** Con varios valores: ("Leche", 15000), ("Agua", 25000). Sin producto si no hay uno por cada valor. */
+    val desglose: List<Pair<String?, Long>>
+        get() = if (valores.size < 2) emptyList()
+        else valores.mapIndexed { i, v -> (if (items.size == valores.size) items[i] else null) to v }
 
     /** Problemas que impiden registrar sin corregir (el agente pregunta en vez de adivinar). */
     val issues: Set<DraftIssue>
@@ -59,10 +65,23 @@ object MovementAgent {
         "cambiale", "queda", "quedo", "debe", "don", "dona", "sr", "sra",
     )
     private val FIADO_WORDS = setOf("fiado", "fiar", "fio", "fie", "fiale", "fiamos", "fiada", "credito")
-    private val GASTO_WORDS = setOf("gasto", "gastos", "gastamos", "pague", "pagamos", "pago", "compra", "compramos", "salida", "salio", "egreso")
+    private val GASTO_WORDS = setOf("gasto", "gastos", "gastamos", "gaste", "pague", "pagamos", "pago", "compra", "compramos", "compre", "salida", "salio", "egreso")
     private val SALE_TRIGGERS = setOf("vendi", "vendimos", "vendio", "venta", "ventas", "vendida", "vendido", "ingreso", "ingresos", "entro")
+    /** Dichas en la frase mandan sobre la pestaña elegida. "pago" o "compra" no: también aparecen en ventas y fiados. */
+    private val SALE_SAID = SALE_TRIGGERS - "entro"
+    private val GASTO_SAID = setOf("gasto", "gastos", "gastamos", "gaste")
     private val ADD_WORDS = setOf("agrega", "agregale", "agregar", "anade", "anadele", "suma", "sumale", "ponle", "mas")
     private val TRANSFER_WORDS = setOf("transferencia", "nequi", "daviplata", "bancolombia", "pse", "tarjeta")
+    private val CLIENT_DELIMITERS = setOf(
+        "en", "de", "del", "por", "valen", "vale", "costo", "costaron", "cuesta", "pesos", "peso", "mil",
+        "un", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+        "fio", "fiado", "fiar", "cobre", "cobrar", "llevo", "lleva", "llevaron", "compro", "compraron",
+        "debe", "pidio", "pidieron", "cuanto", "cuantos", "se", "y",
+    )
+    private val CLIENT_TITLES = setOf("la", "el", "don", "dona", "sr", "sra", "senor", "senora")
+    private val NOT_A_CLIENT = setOf("domicilio", "contado", "llevar", "buen", "precio", "mitad", "cuenta", "credito", "nombre")
+    private val BUY_VERBS = setOf("compro", "compraron", "llevo", "lleva", "llevaron")
+    private val DECLARED_TOTAL = setOf("total", "son", "eran", "fueron", "quedaron")
 
     /** "gaseosas" -> "gaseosa", "panes" -> "pan", "tomates" -> "tomate". */
     fun singular(w: String): String {
@@ -97,31 +116,102 @@ object MovementAgent {
     }
 
     /**
-     * Interpreta una frase. [mode] es lo que el usuario eligió en la pantalla (Venta, Gasto o Fiado);
-     * si dice "fiado", "gasto", "ingreso", el agente se adapta al tipo correspondiente.
+     * Los valores de la frase, uno por cada cosa: "15 mil de leche y 25 mil de agua" son dos y se suman.
+     * Solo cuenta uno cuando se dice el total ("..., son 40 mil"), cuando el segundo corrige al primero sin
+     * otro producto en medio ("2 arroz de 5 mil por 10 mil"), y no cuentan el billete con que pagaron
+     * ("con 50 mil") ni el precio de cada uno ("5 mil cada uno").
+     */
+    private fun amountSpans(tokens: List<String>, spans: List<NumSpan>): List<NumSpan> {
+        val money = spans.filter { s ->
+            (s.magnitude || s.value >= 100) && tokens.getOrNull(s.start - 1) != "con" && tokens.getOrNull(s.end) != "cada"
+        }
+        if (money.size < 2) return listOfNotNull(money.firstOrNull() ?: SpanishNumbers.pickAmount(spans, tokens))
+        val declared = money.filter { s ->
+            tokens.getOrNull(s.start - 1) in DECLARED_TOTAL || tokens.getOrNull(s.end) == "total" ||
+                (tokens.getOrNull(s.end) == "en" && tokens.getOrNull(s.end + 1) == "total")
+        }
+        if (declared.size == 1) return declared
+        val lines = ArrayList<NumSpan>()
+        for (s in money) {
+            val prev = lines.lastOrNull()
+            val sameLine = prev != null && prev.end < s.start && (prev.end until s.start).all { tokens[it] in STOP && tokens[it] != "mas" }
+            if (sameLine) lines[lines.lastIndex] = s else lines.add(s)
+        }
+        return lines
+    }
+
+    /** Palabras que dicen el tipo al empezar ("Gasto de...", "Ingreso de..."): no son parte del concepto. */
+    private fun leadingTrigger(tokens: List<String>, exclude: Set<Int>, triggers: Set<String>): Set<Int> {
+        val first = tokens.indices.firstOrNull { it !in exclude && tokens[it] !in STOP } ?: return emptySet()
+        return if (tokens[first] in triggers) setOf(first) else emptySet()
+    }
+
+    private class HeardClient(val client: ClientRef?, val heard: String?, val indices: Collection<Int>)
+
+    private fun clientAt(start: Int, tokens: List<String>, clients: List<ClientRef>, exclude: Set<Int>): HeardClient? {
+        ClientMatcher.matchWindow(tokens, start, clients, exclude, CLIENT_DELIMITERS)?.let { return HeardClient(it.first, null, it.second) }
+        val window = ArrayList<Int>()
+        var k = start
+        while (k < tokens.size && window.size < 3 && k !in exclude && tokens[k] != "," && tokens[k] !in CLIENT_DELIMITERS && tokens[k] !in STOP) {
+            window.add(k)
+            k++
+        }
+        if (window.isEmpty()) return null
+        return HeardClient(null, window.joinToString(" ") { Txt.cap(tokens[it]) }, window)
+    }
+
+    /** ¿A quién se le vendió? "... a Luisa Castro", "... para don Juan" o "Luisa Castro compró ...". */
+    private fun saleClient(tokens: List<String>, clients: List<ClientRef>, exclude: Set<Int>): HeardClient? {
+        for (i in tokens.indices) {
+            val t = tokens[i]
+            if (t != "para" && (i == 0 || (t != "a" && t != "al"))) continue
+            var start = i + 1
+            while (tokens.getOrNull(start) in CLIENT_TITLES) start++
+            val first = tokens.getOrNull(start) ?: continue
+            if (start in exclude || first == "," || first in STOP || first in NOT_A_CLIENT) continue
+            val found = clientAt(start, tokens, clients, exclude) ?: continue
+            return HeardClient(found.client, found.heard, found.indices + (i + 1 until start))
+        }
+        val verb = tokens.indexOfFirst { it in BUY_VERBS }
+        val nameEnd = if (verb > 0 && tokens[verb - 1] == "se") verb - 1 else verb
+        if (nameEnd in 1..3 && (0 until nameEnd).all { it !in exclude && tokens[it] != "," && tokens[it] !in STOP }) {
+            return clientAt(0, tokens, clients, exclude)
+        }
+        return null
+    }
+
+    /**
+     * Interpreta una frase. [mode] es lo que el usuario eligió en la pantalla (Venta, Gasto o Fiado),
+     * pero lo que dice la frase manda: "fiado", "gasto" o "venta" cambian el tipo.
      */
     fun parse(text: String, mode: MovementType, clients: List<ClientRef>): AgentResult {
         val tokens = Txt.tokenize(text)
         if (tokens.isEmpty()) return AgentResult.NotUnderstood("No se escuchó nada")
 
-        val isFiado = mode == MovementType.FIADO || tokens.any { it in FIADO_WORDS }
-        val isGasto = !isFiado && (mode == MovementType.GASTO || tokens.any { it in GASTO_WORDS })
+        // "tarjeta de crédito" es un medio de pago, no un fiado
+        val saidFiado = tokens.any { it in FIADO_WORDS && !(it == "credito" && "tarjeta" in tokens) }
+        val saidOther = tokens.firstOrNull { it in SALE_SAID || it in GASTO_SAID }
+        val isFiado = saidFiado || (saidOther == null && mode == MovementType.FIADO)
+        val isGasto = !isFiado && (
+            if (saidOther != null) saidOther in GASTO_SAID else mode == MovementType.GASTO || tokens.any { it in GASTO_WORDS }
+        )
 
         val spans = SpanishNumbers.find(tokens)
-        val amountSpan = SpanishNumbers.pickAmount(spans, tokens)
+        val amounts = amountSpans(tokens, spans)
         val exclude = HashSet<Int>()
         for (s in spans) for (k in s.start until s.end) exclude.add(k)
         val pay = if (tokens.any { it in TRANSFER_WORDS }) PayMethod.TRANSFERENCIA else PayMethod.EFECTIVO
-        val amount = amountSpan?.value ?: 0L
+        val amount = amounts.sumOf { it.value }
+        val valores = amounts.map { it.value }
 
         // ---- Caso Gasto ----
         if (isGasto) {
             val hasGastoSignal = spans.isNotEmpty() || tokens.any { it in GASTO_WORDS }
             if (!hasGastoSignal) return AgentResult.NotUnderstood("No parece un gasto")
-            val words = splitItems(tokens, exclude)
+            val words = splitItems(tokens, exclude + leadingTrigger(tokens, exclude, GASTO_WORDS))
             var desc = words.map { Txt.cap(it) }
             if (desc.isEmpty()) desc = listOf("Gasto de tienda")
-            return AgentResult.Ok(MovementDraft(MovementType.GASTO, 1, desc, amount, payMethod = pay))
+            return AgentResult.Ok(MovementDraft(MovementType.GASTO, 1, desc, amount, payMethod = pay, valores = valores))
         }
 
         // ---- Caso Venta / Ingreso ----
@@ -130,25 +220,28 @@ object MovementAgent {
             if (!hasSignal) return AgentResult.NotUnderstood("No parece una venta")
             var qty = 1
             for (s in spans) {
-                if (s === amountSpan) continue
+                if (s in amounts) continue
                 if (s.value in 1L..999L) { qty = s.value.toInt(); break }
             }
-            var items = splitItems(tokens, exclude)
+            val buyer = saleClient(tokens, clients, exclude)
+            var items = splitItems(tokens, exclude + leadingTrigger(tokens, exclude, SALE_TRIGGERS) + buyer?.indices.orEmpty())
             if (qty > 1) items = items.map { if (it.contains(" ")) it else singular(it) }
             var names = items.map { Txt.cap(it) }
             if (names.isEmpty() && amount > 0) names = listOf("Venta")
             if (names.isEmpty() && amount == 0L) return AgentResult.NotUnderstood("No entendí qué se vendió")
-            return AgentResult.Ok(MovementDraft(MovementType.VENTA, qty, names, amount, payMethod = pay))
+            return AgentResult.Ok(
+                MovementDraft(
+                    MovementType.VENTA, qty, names, amount,
+                    clientId = buyer?.client?.id,
+                    clientName = buyer?.client?.name ?: buyer?.heard,
+                    heardClient = buyer?.heard,
+                    payMethod = pay,
+                    valores = valores,
+                )
+            )
         }
 
         // ---- Fiado: ¿a quién? ----
-        val CLIENT_DELIMITERS = setOf(
-            "en", "de", "del", "por", "valen", "vale", "costo", "costaron", "cuesta", "pesos", "peso", "mil",
-            "un", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
-            "fio", "fiado", "fiar", "cobre", "cobrar", "llevo", "lleva", "llevaron", "compro", "compraron",
-            "debe", "pidio", "pidieron", "cuanto", "cuantos", "se",
-        )
-
         val ACTION_VERBS = setOf("se", "llevo", "lleva", "llevaron", "debe", "pidio", "compro", "compraron", "fio", "fiar")
 
         var candIdx = -1
@@ -240,6 +333,7 @@ object MovementAgent {
                 clientName = client?.name ?: heard,
                 heardClient = if (client == null) heard else null,
                 payMethod = pay,
+                valores = valores,
             )
         )
     }

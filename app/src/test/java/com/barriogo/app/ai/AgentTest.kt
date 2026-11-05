@@ -1,7 +1,9 @@
 package com.barriogo.app.ai
 
+import com.barriogo.app.data.MovementEntity
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.PayMethod
+import com.barriogo.app.domain.titleWithClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -131,6 +133,123 @@ class AgentTest {
         assertEquals("Laura Estefania", d.heardClient)
         assertEquals(14000L, d.amount)
         assertEquals(listOf("Pollo"), d.items)
+    }
+
+    // ---------- Varios valores en una frase ----------
+    private val conLuisa = clients + ClientRef(6, "Luisa Castro")
+
+    private fun okCon(text: String, mode: MovementType = MovementType.VENTA, lista: List<ClientRef> = conLuisa): MovementDraft =
+        (MovementAgent.parse(text, mode, lista) as AgentResult.Ok).draft
+
+    @Test fun venta_con_dos_valores_y_cliente_existente() {
+        val d = okCon("Venta de 15mil de leche y 25mil de agua a Luisa Castro")
+        assertEquals(MovementType.VENTA, d.type)
+        assertEquals(40000L, d.amount)
+        assertEquals(listOf("Leche", "Agua"), d.items)
+        assertEquals("Luisa Castro", d.clientName)
+        assertEquals(listOf<Pair<String?, Long>>("Leche" to 15000L, "Agua" to 25000L), d.desglose)
+        assertTrue(d.issues.isEmpty())
+    }
+
+    @Test fun venta_con_cliente_que_no_existe_no_tiene_problemas() {
+        val d = okCon("Venta de 15mil de leche y 25mil de agua a Luisa Castro", lista = clients)
+        assertEquals(40000L, d.amount)
+        assertEquals(listOf("Leche", "Agua"), d.items)
+        assertNull(d.clientId)
+        assertEquals("Luisa Castro", d.clientName)
+        assertTrue(d.issues.isEmpty())
+    }
+
+    @Test fun venta_varias_formas_de_decir_los_valores() {
+        assertEquals(40000L, okCon("Vendí leche por 15 mil y agua por 25 mil").amount)
+        assertEquals(40000L, okCon("Vendí leche 15 mil agua 25 mil").amount)
+        assertEquals(40000L, okCon("venta de leche y agua, 15 mil y 25 mil").amount)
+        assertEquals(40000L, okCon("Venta de 15 mil 25 mil").amount)
+        assertEquals(40000L, okCon("Venta de quince mil de leche y veinticinco mil de agua").amount)
+        assertEquals(45000L, okCon("Venta de 15.000 de leche, 25.000 de agua y 5.000 de pan").amount)
+    }
+
+    @Test fun un_total_dicho_no_se_suma_otra_vez() {
+        assertEquals(40000L, okCon("Vendí 15 mil de leche y 25 mil de agua, son 40 mil").amount)
+        assertEquals(40000L, okCon("Vendí 15 mil de leche y 25 mil de agua, en total 40 mil").amount)
+        assertEquals(40000L, okCon("Vendí 15 mil de leche y 25 mil de agua, 40 mil en total").amount)
+    }
+
+    @Test fun precio_unitario_y_billete_no_se_suman() {
+        assertEquals(10000L, okCon("Vendí 2 arroz de 5 mil por 10 mil").amount)
+        assertEquals(10000L, okCon("Vendí 2 arroz a 5 mil cada uno por 10 mil").amount)
+        assertEquals(5000L, okCon("Vendí pan por 5 mil, me pagó con 10 mil").amount)
+        assertEquals(8500L, okCon("Vendí arroz por 8 mil 500").amount)
+    }
+
+    @Test fun cantidades_no_son_valores() {
+        val d = okCon("Vendí 2 gaseosas por 8 mil a Luisa Castro")
+        assertEquals(2, d.quantity)
+        assertEquals(8000L, d.amount)
+        assertEquals(listOf("Gaseosa"), d.items)
+        assertEquals("Luisa Castro", d.clientName)
+    }
+
+    @Test fun cliente_en_venta_otras_formas() {
+        assertEquals("Luisa Castro", okCon("Vendí leche por 15 mil a Luisa Castro").clientName)
+        assertEquals("Luisa Castro", okCon("Luisa Castro compró leche por 15 mil").clientName)
+        assertEquals(listOf("Leche"), okCon("Luisa Castro compró leche por 15 mil").items)
+        assertEquals("Juan", okCon("Venta de 10 mil de pan a don Juan", lista = clients).clientName)
+        val soloCliente = okCon("Venta de 40 mil a Luisa Castro")
+        assertEquals("Luisa Castro", soloCliente.clientName)
+        assertEquals(listOf("Venta"), soloCliente.items)
+    }
+
+    @Test fun venta_sin_cliente_no_inventa_uno() {
+        assertNull(okCon("Vendí 2 gaseosas por 8 mil").clientName)
+        assertNull(okCon("Vendí 2 arroz a 5 mil").clientName)
+        assertNull(okCon("Vendí leche a domicilio por 5 mil").clientName)
+        assertNull(okCon("Venta de arroz por 5 mil para llevar").clientName)
+    }
+
+    @Test fun lo_que_se_dice_manda_sobre_la_pestana() {
+        val frase = "Venta de 15 mil de leche y 25 mil de agua a Luisa Castro"
+        assertEquals(MovementType.VENTA, okCon(frase, MovementType.FIADO).type)
+        assertEquals(MovementType.VENTA, okCon(frase, MovementType.GASTO).type)
+        assertEquals(MovementType.GASTO, okCon("Gasto de 8 mil en bolsas", MovementType.FIADO).type)
+        assertEquals(MovementType.FIADO, okCon("Fiado de 8 mil de pan a Luisa", MovementType.GASTO).type)
+    }
+
+    @Test fun la_pestana_manda_si_la_frase_no_lo_dice() {
+        assertEquals(MovementType.FIADO, okCon("Luisa Castro compró leche por 15 mil", MovementType.FIADO).type)
+        assertEquals(MovementType.FIADO, okCon("Marta pago 5 mil de pan", MovementType.FIADO).type)
+        assertEquals(MovementType.GASTO, okCon("Luz 50 mil", MovementType.GASTO).type)
+    }
+
+    @Test fun venta_con_tarjeta_de_credito_no_es_fiado() {
+        val d = okCon("Venta de 10 mil de pan con tarjeta de crédito")
+        assertEquals(MovementType.VENTA, d.type)
+        assertEquals(PayMethod.TRANSFERENCIA, d.payMethod)
+    }
+
+    @Test fun fiado_con_dos_valores() {
+        val d = okCon("Fiado de 15 mil de leche y 25 mil de agua a Luisa Castro", MovementType.FIADO)
+        assertEquals(40000L, d.amount)
+        assertEquals(6L, d.clientId)
+        assertEquals(listOf("Leche", "Agua"), d.items)
+    }
+
+    @Test fun gasto_con_dos_valores_sin_la_palabra_gasto_en_el_concepto() {
+        val d = okCon("Gasto de 15 mil de leche y 25 mil de agua")
+        assertEquals(MovementType.GASTO, d.type)
+        assertEquals(40000L, d.amount)
+        assertEquals(listOf("Leche", "Agua"), d.items)
+        assertEquals(listOf("Bolsas"), okCon("Gasto de 8 mil en bolsas").items)
+    }
+
+    @Test fun titulo_en_movimientos_con_cliente() {
+        fun m(type: MovementType, title: String, detail: String = "", cliente: String? = null, qty: Int = 1) =
+            MovementEntity(type = type.name, amount = 1, title = title, detail = detail, quantity = qty, clientName = cliente, profileId = 0, profileName = "", createdAt = 0)
+        assertEquals("Luisa Castro · Leche y Agua", m(MovementType.VENTA, "Leche y Agua", cliente = "Luisa Castro").titleWithClient())
+        assertEquals("Luisa Castro · 2 × Gaseosa", m(MovementType.VENTA, "Gaseosa", cliente = "Luisa Castro", qty = 2).titleWithClient())
+        assertEquals("Luisa Castro · Leche", m(MovementType.FIADO, "Fiado", detail = "Leche", cliente = "Luisa Castro").titleWithClient())
+        assertEquals("Luisa Castro · Abono", m(MovementType.ABONO, "Abono", cliente = "Luisa Castro").titleWithClient())
+        assertEquals("Leche", m(MovementType.VENTA, "Leche").titleWithClient())
     }
 
     // ---------- Edición por voz ----------

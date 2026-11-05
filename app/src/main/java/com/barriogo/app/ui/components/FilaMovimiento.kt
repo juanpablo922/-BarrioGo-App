@@ -35,7 +35,7 @@ import com.barriogo.app.domain.Money
 import com.barriogo.app.domain.MovementType
 import com.barriogo.app.domain.ReglasGasto
 import com.barriogo.app.domain.kind
-import com.barriogo.app.domain.label
+import com.barriogo.app.domain.titleWithClient
 import com.barriogo.app.ui.theme.FigmaColors
 import kotlin.math.abs
 
@@ -94,7 +94,7 @@ fun FilaMovimientoFigma(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    m.label(), color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    m.titleWithClient(), color = FigmaColors.Crema, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, textDecoration = tachado,
                 )
                 Text(

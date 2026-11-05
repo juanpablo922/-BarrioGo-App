@@ -266,10 +266,20 @@ fun VoiceCaptureScreen(
                                 fontWeight = FontWeight.Bold
                             )
 
+                            // Varios valores: se ve de dónde sale el total antes de confirmar
+                            d.desglose.forEach { (producto, valor) ->
+                                Text(
+                                    (producto?.let { "$it: " } ?: "") + Money.cop(valor),
+                                    color = BarrioColors.TextHint,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.testTag("voice_breakdown_line")
+                                )
+                            }
+
                             Spacer(Modifier.height(6.dp))
 
                             val conceptText = when (d.type) {
-                                MovementType.VENTA -> if (d.items.isNotEmpty()) d.itemText else "Venta general"
+                                MovementType.VENTA -> (d.clientName?.let { "Cliente: $it · " } ?: "") + if (d.items.isNotEmpty()) d.itemText else "Venta general"
                                 MovementType.GASTO -> if (d.items.isNotEmpty()) d.itemText else "Gasto de tienda"
                                 else -> "Cliente: ${d.clientName ?: d.heardClient ?: "Pendiente"} · ${if (d.items.isNotEmpty()) d.itemText else "Mercancía"}"
                             }
