@@ -47,7 +47,7 @@ La IA se integra dentro de la arquitectura de la aplicación Android a través d
 
 ## 💡 3. ¿Por qué escogimos este Modelo de IA? (Justificación Técnica)
 
-Para la percepción de voz se seleccionó **Google SpeechRecognizer (`es-CO`) + Agente NLU en Kotlin puro** tras comparar 32 candidatos (incluyendo modelos pesados como Whisper, Vosk y NVIDIA Canary).
+Para la percepción de voz se seleccionó **Google SpeechRecognizer (`es-CO`) + Agente NLU en Kotlin puro** tras comparar 4 candidatos (incluyendo modelos pesados como Whisper, Vosk y NVIDIA Canary).
 
 ### Razones Clave de la Selección:
 1. **Operación On-Device / Local:** Corre directamente en el celular del tendero sin requerir servidores externos ni GPUs dedicadas.
