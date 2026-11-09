@@ -1,190 +1,113 @@
-# 🧠 Agente de IA de BarrioGo: Registro de Movimientos por Voz
+# 🛒 BarrioGo — Asistente Inteligente para la Gestión de Micronegocios
 
-Documentación técnica, teórica y experimental del componente de **Inteligencia Artificial** de BarrioGo para la sustentación de la asignatura de **Inteligencia Artificial**.
+Documentación técnica, teórica y experimental del componente de **Inteligencia Artificial** de BarrioGo para la sustentación final de la asignatura de **Inteligencia Artificial**.
+
+> **Repositorio de la Aplicación Completa:** [https://github.com/juanpablo922/-BarrioGo-App/tree/feature/autenticacion-y-perfiles](https://github.com/juanpablo922/-BarrioGo-App/tree/feature/autenticacion-y-perfiles)  
+> **Repositorio de la Entrega de IA:** [https://github.com/juanpablo922/-BarrioGo-App/tree/entrega-final-ia](https://github.com/juanpablo922/-BarrioGo-App/tree/entrega-final-ia)
 
 ---
 
 ## 👥 Integrantes del Grupo de Inteligencia Artificial
 
-- **Juan Pablo Medina Quintero**
-- **Mateo Abril García**
-- **Laura Stefania**
-- **Catalina García**
+- **Catalina Hernández**
+- **Juan Pablo Medina**
+- **Laura Devia**
+- **Mateo Abril**
 
 ---
 
-## 🔗 Enlaces Públicos a Repositorios
+## 📌 1. ¿Qué hace BarrioGo y para qué funciona?
 
-- **Repositorio de Inteligencia Artificial (Este repositorio):** [https://github.com/juanpablo922/BarrioGo-IA.git](https://github.com/juanpablo922/BarrioGo-IA.git)
-- **Repositorio de la Aplicación Móvil Integrada:** [https://github.com/juanpablo922/-BarrioGo-App/tree/feature/autenticacion-y-perfiles](https://github.com/juanpablo922/-BarrioGo-App/tree/feature/autenticacion-y-perfiles)
+**BarrioGo** es una solución móvil diseñada para la gestión financiera y operativa diaria de tiendas de barrio en Colombia.
 
----
+### El Problema que Resuelve:
+En una tienda de barrio, el tendero atiende clientes, despacha productos y cobra dinero al mismo tiempo. Anotar cada venta, gasto o fiado a mano en un cuaderno o llenar formularios en una pantalla le resta tiempo operativo. El resultado es que **muchos movimientos no se registran**, generando descuadres de caja al final del día.
 
-> **Resumen en tres líneas**
-> 1. El tendero **habla** ("Vendí 2 gaseosas por 8 mil" / "Fiado a Mateo Ramírez 20 mil de carne"). Un modelo de voz de aprendizaje profundo preentrenado convierte el audio en texto.
-> 2. Un **agente de reglas NLU** propio extrae la intención (venta, gasto o fiado) y las entidades (cantidad, producto, monto, cliente, método de pago) con algoritmos deterministas y distancia Levenshtein.
-> 3. El agente **propone** y el tendero **confirma** (*Human-in-the-loop*). Solo entonces se guarda en **Firestore (Firebase)**. Si el cliente no existe, se crea automáticamente.
+### La Solución:
+BarrioGo permite registrar movimientos contables **en 3 a 5 segundos sin escribir**, utilizando lenguaje natural hablado en español de Colombia (`es-CO`). El tendero habla libremente (ej. *"Vendí 2 gaseosas por 8 mil"*, *"Fiado para Mateo Ramírez 20 mil de carne"*, *"Pagué 150 mil a Coca-Cola"*), la IA interpreta la intención y extrae las entidades, y con un solo toque el movimiento queda registrado.
 
 ---
 
-## 📁 Estructura del Repositorio
+## 🔗 2. ¿Cómo está integrada la Inteligencia Artificial en BarrioGo?
+
+La IA se integra dentro de la arquitectura de la aplicación Android a través de un flujo directo de 5 etapas:
+
+```
+[ TENDERO HABLA ] ──► [ VoiceRecognizer.kt ] ──► [ MovementAgent.kt ] ──► [ ConfirmDraftScreen ] ──► [ Firebase Firestore ]
+    (Audio)              (ASR 16 kHz es-CO)         (Agente Reactivo)          (Agente Utilidad)             (Persistencia)
+```
+
+1. **Percepción ASR (`VoiceRecognizer.kt`):** Captura el audio del micrófono a **16 kHz** y genera la transcripción textual.
+2. **Procesamiento NLU (`MovementAgent.kt`):** Analiza el texto, clasifica la intención (**Venta, Gasto o Fiado**) y extrae las entidades (**monto, producto, cantidad, cliente**). Usa `ClientMatcher.kt` (distancia Levenshtein) para asociar el cliente o crear uno nuevo.
+3. **Agente Reactivo:** Mantiene el estado interno de la operación y gestiona los borradores de movimientos (`MovementDraft`).
+4. **Agente Basado en Utilidad:** Evalúa las reglas financieras (verifica si hay caja diaria abierta, límites de crédito del cliente y validación de valores mayor a $0).
+5. **Estrategia *Human-in-the-Loop*:** Presenta la pantalla *"Esto entendí"* para que el tendero revise y apruebe con un toque antes de enviar la transacción a **Firebase Firestore**.
+
+---
+
+## 💡 3. ¿Por qué escogimos este Modelo de IA? (Justificación Técnica)
+
+Para la percepción de voz se seleccionó **Google SpeechRecognizer (`es-CO`) + Agente NLU en Kotlin puro** tras comparar 32 candidatos (incluyendo modelos pesados como Whisper, Vosk y NVIDIA Canary).
+
+### Razones Clave de la Selección:
+1. **Operación On-Device / Local:** Corre directamente en el celular del tendero sin requerir servidores externos ni GPUs dedicadas.
+2. **Latencia Instantánea (< 100 ms):** Permite registrar movimientos en 3 segundos, superando a APIs en la nube que tardan entre 1 y 3 segundos.
+3. **Costo de Operación $0 USD:** No requiere pagar suscripciones ni tokens por cada consulta dictada.
+4. **Cero Alucinación Contable (0.8%):** Esencial para no inventar montos de dinero ni alterar los saldos de la caja.
+5. **Máxima Exactitud Acústica y NLU:** Alcanzó un **99.9% de exactitud acústica** y un **99.2% de exactitud NLU** en el contexto de tiendas colombianas.
+
+---
+
+## 📊 4. Evaluación Supervisada y Metodología Ground Truth
+
+La evaluación se realizó sobre **132 audios reales** grabados en tiendas de barrio y un dataset de **1.000 frases etiquetadas** en lenguaje coloquial colombiano (`dataset/BarrioGO_Comparación_Modelos.xlsx` y `dataset/Dataset_BarrioGo_1000_Frases.xlsx`).
+
+### Tabla Comparativa de Resultados Oficiales (Diapositiva 4):
+
+| Modelo ASR Evaluado | Exactitud Acústica | WER (Word Error Rate) | Alucinación | Exactitud NLU |
+|---|---|---|---|---|
+| **Google SpeechRecognizer** *(Seleccionado)* | **99.9%** | **0.1%** | **0.8%** | **99.2%** |
+| NVIDIA Canary 1B ASR | 49.2% | 50.8% | 10.6% | 98.5% |
+| Whisper | 77.1% | 22.9% | 6.9% | 93.9% |
+| Vosk ASR | 36.7% | 63.3% | 34.8% | 65.2% |
+
+---
+
+## 🔊 5. Procesamiento Digital del Sonido
+
+- **Frecuencia de Muestreo:** **16 kHz (16.000 muestras por segundo)**, óptimo para la voz humana.
+- **Representación Digital:** Conversión de la señal sonora continua en muestras de amplitud discretas.
+- **Análisis Acústico:** Agrupación de muestras en ventanas para extracción de características frecuenciales de la voz.
+
+---
+
+## 📁 6. Mapa de Archivos del Repositorio
 
 ```
 BarrioGo-IA/
-├── README.md                              # Documentación técnica completa
-├── dataset/                               # Dataset de evaluación y comparativa de modelos
-│   ├── Dataset_BarrioGo_1000_Frases.xlsx  # Dataset de 1.000 frases coloquiales etiquetadas
-│   └── BarrioGo_Comparativa_Voz.xlsx      # Estudio comparativo de 32 modelos de voz
-├── codigo_ia/                             # 1. CÓDIGO PURO DE INTELIGENCIA ARTIFICIAL (NLU)
-│   ├── VoiceRecognizer.kt                 # Sensor de percepción de voz (android.speech es-CO)
-│   ├── MovementAgent.kt                   # Agente de interpretación de movimientos y 4 patrones
-│   ├── SpanishNumbers.kt                  # Parser de números hablados y jerga ("14mil", "lucas")
-│   └── ClientMatcher.kt                   # Coincidencia difusa con distancia Levenshtein
-├── integracion_app/                       # 2. IMPLEMENTACIÓN DE LA IA EN LA APLICACIÓN
-│   ├── VoiceViewModel.kt                  # Orquestador de estado y máquina de estados
-│   ├── VoiceCaptureScreen.kt              # Pantalla principal de captura por voz
-│   └── ConfirmDraftScreen.kt              # Pantalla "Esto entendí" (Propuesta e interacción)
-└── pruebas/                               # PRUEBAS UNITARIAS DEL AGENTE
-    └── AgentTest.kt                       # Pruebas JUnit que validan la precisión del Agente
+├── README.md                                  # Documentación técnica completa
+├── dataset/                                   # Datasets, Presentación y Pruebas
+│   ├── BarrioGo-Entrega_Final.pptx            # Presentación oficial de la sustentación
+│   ├── Dataset_BarrioGo_1000_Frases.xlsx      # Dataset con 1.000 frases etiquetadas
+│   ├── BarrioGO_Comparación_Modelos.xlsx      # Evaluación Ground Truth de los 132 audios
+│   └── Audios/                                # Carpeta con los 132 audios reales (.ogg)
+├── codigo_ia/                                 # 1. CÓDIGO PURO DE INTELIGENCIA ARTIFICIAL (VOZ Y NLU)
+│   ├── VoiceRecognizer.kt                     # Sensor ASR (Audio 16 kHz, es-CO)
+│   ├── MovementAgent.kt                       # Agente Reactivo NLU e interpretación
+│   ├── SpanishNumbers.kt                      # Parser numérico y jerga colombiana ("14mil", "lucas")
+│   └── ClientMatcher.kt                       # Agente con distancia Levenshtein
+├── integracion_app/                           # 2. IMPLEMENTACIÓN EN LA APP ANDROID
+│   ├── VoiceViewModel.kt                      # Agente de Utilidad (Validación de reglas y saldos)
+│   ├── VoiceCaptureScreen.kt                  # Pantalla de captura por voz
+│   └── ConfirmDraftScreen.kt                  # Pantalla "Esto entendí" (Human-in-the-loop)
+└── pruebas/                                   # PRUEBAS AUTOMÁTICAS
+    └── AgentTest.kt                           # 92 Pruebas unitarias en JUnit
 ```
 
 ---
 
-## Contenido Teórico y Técnico
+## 🧪 7. Cómo Ejecutar las Pruebas de IA
 
-1. [Problema que resuelve](#1-problema-que-resuelve)
-2. [Objetivos](#2-objetivos)
-3. [Qué tipo de IA es](#3-qué-tipo-de-ia-es)
-4. [Modelo REAS (PEAS)](#4-modelo-reas-peas)
-5. [Propiedades del entorno](#5-propiedades-del-entorno)
-6. [Arquitectura del Sistema](#6-arquitectura-del-sistema)
-7. [Tecnologías, librerías e importaciones](#7-tecnologías-librerías-e-importaciones)
-8. [Algoritmos internos del agente](#8-algoritmos-internos-del-agente)
-9. [Por qué un modelo ya entrenado y no uno desde cero](#9-por-qué-un-modelo-ya-entrenado-y-no-uno-desde-cero)
-10. [Estudio Comparativo con otros 32 algoritmos](#10-estudio-comparativo-con-otros-32-algoritmos)
-11. [Por qué no es una IA de árboles ni de búsqueda A*](#11-por-qué-no-es-una-ia-de-árboles-ni-de-búsqueda-a)
-12. [Persistencia: CRUD en Firestore](#12-persistencia-crud-en-firestore)
-13. [Ejemplo completo paso a paso](#13-ejemplo-completo-paso-a-paso)
-14. [Evaluación y Dataset de 1.000 Frases](#14-evaluación-y-dataset-de-1000-frases)
-15. [Limitaciones y mejoras identificadas](#15-limitaciones-y-mejoras-identificadas)
-
----
-
-## 1. Problema que resuelve
-
-En una tienda de barrio, el tendero atiende, cobra y despacha al mismo tiempo. Anotar cada venta, gasto o fiado en un cuaderno o en formularios quita tiempo. El resultado es que **muchos movimientos no se registran**, y al cierre la caja no cuadra.
-
-**Solución:** un agente que escucha una frase corta en lenguaje natural, la convierte en un registro estructurado y lo muestra para confirmarlo con un toque.
-
-| Sin la IA | Con la IA |
-|---|---|
-| Abrir formulario, elegir tipo, escribir producto, escribir monto, guardar | Tocar el micrófono, hablar y confirmar |
-| Se olvidan movimientos en horas de alta demanda | Registro en 3 a 5 segundos |
-
----
-
-## 2. Objetivos
-
-### Objetivo general
-Desarrollar un agente inteligente para la app móvil BarrioGo que registre ventas, gastos y fiados a partir de la voz del tendero, usando reconocimiento de voz preentrenado y reglas NLU adaptadas al español de Colombia (`es-CO`).
-
-### Objetivos específicos
-1. **Percibir:** integrar el reconocedor de voz de Android (`SpeechRecognizer`, idioma `es-CO`) para convertir el audio en texto.
-2. **Interpretar:** diseñar reglas que identifiquen la **intención** (venta, gasto o fiado) y extraigan las **entidades** (cantidad, producto, monto, cliente y método de pago).
-3. **Tolerar errores de transcripción:** reconocer clientes compuestos (*"Mateo Ramírez"*) mediante la distancia de edición de Levenshtein.
-4. **Validar y pedir confirmación:** detectar datos faltantes y presentar una propuesta editable antes de guardar.
-5. **Actuar:** registrar el movimiento confirmado en Firestore (`tiendas/{tienda}/movimientos`) y crear el cliente en tiempo real si no existe.
-
----
-
-## 3. Qué tipo de IA es
-
-| Pregunta | Respuesta |
-|---|---|
-| ¿IA fuerte o débil? | **IA débil (estrecha).** Resuelve una sola tarea de registro contable. |
-| ¿Qué área? | **Procesamiento de Lenguaje Natural (PLN/NLU).** Combina ASR y NLU. |
-| ¿Qué técnica? | **Sistema híbrido:** ASR de aprendizaje profundo preentrenado + **IA simbólica basada en reglas** para la interpretación. |
-| ¿Qué tipo de agente? | **Agente reactivo basado en reglas** (condición → acción) con modelo interno de clientes. |
-| ¿Decide solo? | **No.** Sistema con **humano en el ciclo** (*human-in-the-loop*). |
-
----
-
-## 4. Modelo REAS (PEAS)
-
-| Componente | Descripción |
-|---|---|
-| **R — Rendimiento** | Exactitud en intención y monto, latencia < 100 ms, cero registros sin confirmar. |
-| **E — Entorno** | Tienda de barrio colombiana, jerga ("lucas", "14mil"), ruido ambiente. |
-| **A — Actuadores** | Pantalla "Esto entendí", avisos de validación, creación de clientes y escrituras en Firestore. |
-| **S — Sensores** | Micrófono del celular (`SpeechRecognizer`) y estado táctil. |
-
----
-
-## 5. Propiedades del entorno
-
-- **Parcialmente observable** (recibe texto del ASR).
-- **Estocástico** (el audio cambia con el ruido).
-- **Episódico** (cada frase es un evento independiente).
-- **Estático** y **Discreto**.
-
----
-
-## 6. Arquitectura del Sistema
-
-```
-[ TENDERO HABLA ] ──► [ VoiceRecognizer.kt ] ──► [ MovementAgent.kt ] ──► [ ConfirmDraftScreen ] ──► [ Firestore ]
-    (Audio)              (ASR es-CO)               (NLU + Levenshtein)        (Human-in-the-loop)       (Persistencia)
-```
-
----
-
-## 7. Tecnologías e Importaciones
-
-- **Kotlin** puro para los algoritmos del agente (`codigo_ia/`).
-- **`android.speech.SpeechRecognizer`** para percepción de voz.
-- **`java.text.Normalizer`** para procesamiento de acentos y texto.
-- **Firebase Firestore** para sincronización en tiempo real.
-
----
-
-## 8. Algoritmos Internos del Agente
-
-### 8.1 Normalización y Tokenización
-Separa palabras y divide números pegados a unidades (ej. `"14mil"` ➔ `"14 mil"`, `"20k"` ➔ `"20 k"`).
-
-### 8.2 Parser de Números Hablados (`SpanishNumbers`)
-Suma unidades, decenas y centenas en español e interpreta expresiones colombianas como `"cinco lucas"` ($ 5.000) o `"ocho mil quinientos"` ($ 8.500).
-
-### 8.3 Algoritmo de Distancia Levenshtein (`ClientMatcher`)
-Calcula la similitud entre 0 y 1 para asociar nombres completos o compuestos (*"Mateo Ramírez"*) tolerando errores de dicción:
-$$\text{similitud} = 1 - \frac{\text{distancia\_levenshtein}(a, b)}{\max(|a|, |b|)}$$
-
----
-
-## 9. Estudio Comparativo con otros 32 algoritmos
-
-Se evaluaron 32 candidatos (Vosk, Whisper Tiny/Base, Google Speech API, etc.) en el archivo `dataset/BarrioGo_Comparativa_Voz.xlsx`.
-
-| Criterio | Solución Elegida (Android + Reglas NLU) | Modelos Cloud (Google Cloud / OpenAI) |
-|---|---|---|
-| **Latencia** | **< 100 ms** (Instantáneo) | 1.000 ms - 3.000 ms |
-| **Costo** | **$0 USD** | Cobro por minuto o tokens |
-| **Privacidad** | **100% On-Device** | Transmisión a servidores externos |
-| **Sin Internet** | **Funciona sin conexión** | Requiere internet continuo |
-
----
-
-## 10. Evaluación y Dataset de 1.000 Frases
-
-En la carpeta `dataset/Dataset_BarrioGo_1000_Frases.xlsx` se incluye la evaluación de **1.000 frases etiquetadas** con intenciones (*Venta, Gasto, Fiado*), entidades extraídas y acciones esperadas del agente.
-
-Además, en `pruebas/AgentTest.kt` se incluyen **92 pruebas unitarias en JUnit** ejecutables sin celular para validar la exactitud del algoritmo.
-
----
-
-## 11. Instrucciones para Ejecutar las Pruebas de IA
-
-1. Abre el proyecto en Android Studio.
-2. Navega a `pruebas/AgentTest.kt`.
-3. Haz clic derecho sobre el archivo y selecciona **Run 'AgentTest'**.
-4. Se ejecutarán las **92 pruebas unitarias** mostrando el resultado de precisión del agente.
+1. Abre la suite de pruebas en `pruebas/AgentTest.kt` en Android Studio.
+2. Haz clic derecho sobre el archivo y selecciona **Run 'AgentTest'**.
+3. Se ejecutarán las **92 pruebas unitarias** mostrando la precisión del agente.
