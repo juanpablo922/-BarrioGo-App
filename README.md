@@ -117,6 +117,16 @@ BarrioGo-IA/
 └── pruebas/                                   # PRUEBAS AUTOMÁTICAS
     └── AgentTest.kt                           # 92 Pruebas unitarias en JUnit
 ```
+### Resultados y Análisis.
+Resultados del Sistema
+* Reducción del tiempo de registro: El tiempo promedio que le toma a un tendero atender a un cliente, entregar el producto, recibir el dinero, dar el cambio y registrar la venta manualmente oscila entre 5 y 10 minutos. Con el uso del asistente, el proceso de registro se reduce a un rango de 30 a 45 segundos según las pruebas ejecutadas.
+* Eliminación de la fricción operativa: La interacción por voz elimina la necesidad de digitar datos en pantalla o navegar por menús manuales mientras se atiende al cliente en tiempo real.
+* Confiabilidad y precisión transaccional: El sistema asegura la captura de movimientos contables con alta exactitud en la clasificación de intenciones y la extracción de entidades, manteniendo una tasa de alucinación mínima.
+
+Limitaciones del Sistema
+* Ausencia de jerga colombiana en reconocedores base: Los modelos ASR comerciales no incorporan por defecto expresiones o modismos locales (como "5 lucas"), lo que requirió la construcción y análisis de un dataset supervisado de 132 audios reales para ajustar las reglas de normalización del NLU.
+* Ambigüedad inicial en la extracción de entidades: Durante el procesamiento de ciertos audios se presentaron confusiones donde el agente interpretaba nombres de personas (clientes) como productos, o bien confundía precios unitarios con valores totales de la transacción.
+* Dependencia del registro previo en base de datos: La resolución de apodos hablados (como "Don Chepe") depende de que el cliente o producto ya exista registrado en la base de datos local para que los algoritmos de Fuzzy Matching (Levenshtein y Metaphone) puedan realizar la vinculación correspondiente.
 
 ---
 
