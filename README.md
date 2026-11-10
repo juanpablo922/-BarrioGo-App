@@ -1,4 +1,4 @@
-# 🛒 BarrioGo — Asistente Inteligente para la Gestión de Micronegocios
+# BarrioGo — Asistente Inteligente para la Gestión de Micronegocios
 
 Documentación técnica, teórica y experimental del componente de **Inteligencia Artificial** de BarrioGo para la sustentación final de la asignatura de **Inteligencia Artificial**.
 
@@ -7,7 +7,7 @@ Documentación técnica, teórica y experimental del componente de **Inteligenci
 
 ---
 
-## 👥 Integrantes del Grupo de Inteligencia Artificial
+## Integrantes del Grupo de Inteligencia Artificial
 
 - **Catalina Hernández**
 - **Juan Pablo Medina**
@@ -16,7 +16,7 @@ Documentación técnica, teórica y experimental del componente de **Inteligenci
 
 ---
 
-## 📌 1. ¿Qué hace BarrioGo y para qué funciona?
+##  1. ¿Qué hace BarrioGo y para qué funciona?
 
 **BarrioGo** es una solución móvil diseñada para la gestión financiera y operativa diaria de tiendas de barrio en Colombia.
 
@@ -28,7 +28,7 @@ BarrioGo permite registrar movimientos contables **en 3 a 5 segundos sin escribi
 
 ---
 
-## 🔗 2. ¿Cómo está integrada la Inteligencia Artificial en BarrioGo?
+## 2. ¿Cómo está integrada la Inteligencia Artificial en BarrioGo?
 
 La IA se integra dentro de la arquitectura de la aplicación Android a través de un flujo directo de 5 etapas:
 
@@ -45,7 +45,7 @@ La IA se integra dentro de la arquitectura de la aplicación Android a través d
 
 ---
 
-## 💡 3. ¿Por qué escogimos este Modelo de IA? (Justificación Técnica)
+## 3. ¿Por qué escogimos este Modelo de IA? (Justificación Técnica)
 
 Para la percepción de voz se seleccionó **Google SpeechRecognizer (`es-CO`) + Agente NLU en Kotlin puro** tras comparar 4 candidatos (incluyendo modelos pesados como Whisper, Vosk y NVIDIA Canary).
 
@@ -58,7 +58,7 @@ Para la percepción de voz se seleccionó **Google SpeechRecognizer (`es-CO`) + 
 
 ---
 
-## 📊 4. Evaluación Supervisada y Metodología Ground Truth
+## 4. Evaluación Supervisada y Metodología Ground Truth
 
 La evaluación se realizó sobre **132 audios reales** grabados en tiendas de barrio y un dataset de **1.000 frases etiquetadas** en lenguaje coloquial colombiano (`dataset/BarrioGO_Comparación_Modelos.xlsx` y `dataset/Dataset_BarrioGo_1000_Frases.xlsx`).
 
@@ -73,7 +73,7 @@ La evaluación se realizó sobre **132 audios reales** grabados en tiendas de ba
 
 ---
 
-## 🔊 5. Procesamiento Digital del Sonido
+### 5. Procesamiento Digital del Sonido
 1. *Fotos del sonido (Samples):*
 Cuando el tendero habla, el micrófono toma 16.000 "fotografías" por segundo del volumen de su voz. Cada una de estas fotos individuales es un *sample*.
 
@@ -95,7 +95,7 @@ El "cerebro" de BarrioGo recibe ese texto, limpia la jerga ("5 lucas" - $5.000),
 
 ---
 
-## 📁 6. Mapa de Archivos del Repositorio
+## 6. Mapa de Archivos del Repositorio
 
 ```
 BarrioGo-IA/
@@ -117,7 +117,7 @@ BarrioGo-IA/
 └── pruebas/                                   # PRUEBAS AUTOMÁTICAS
     └── AgentTest.kt                           # 92 Pruebas unitarias en JUnit
 ```
-### Resultados y Análisis.
+### 7. Resultados y Análisis.
 Resultados del Sistema
 * Reducción del tiempo de registro: El tiempo promedio que le toma a un tendero atender a un cliente, entregar el producto, recibir el dinero, dar el cambio y registrar la venta manualmente oscila entre 5 y 10 minutos. Con el uso del asistente, el proceso de registro se reduce a un rango de 30 a 45 segundos según las pruebas ejecutadas.
 * Eliminación de la fricción operativa: La interacción por voz elimina la necesidad de digitar datos en pantalla o navegar por menús manuales mientras se atiende al cliente en tiempo real.
@@ -130,7 +130,7 @@ Limitaciones del Sistema
 
 ---
 
-## 🧪 7. Cómo Ejecutar las Pruebas de IA
+## 8. Cómo Ejecutar las Pruebas de IA
 
 1. Abre la suite de pruebas en `pruebas/AgentTest.kt` en Android Studio.
 2. Haz clic derecho sobre el archivo y selecciona **Run 'AgentTest'**.
