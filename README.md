@@ -74,10 +74,24 @@ La evaluación se realizó sobre **132 audios reales** grabados en tiendas de ba
 ---
 
 ## 🔊 5. Procesamiento Digital del Sonido
+1. *Fotos del sonido (Samples):*
+Cuando el tendero habla, el micrófono toma 16.000 "fotografías" por segundo del volumen de su voz. Cada una de estas fotos individuales es un *sample*.
 
-- **Frecuencia de Muestreo:** **16 kHz (16.000 muestras por segundo)**, óptimo para la voz humana.
-- **Representación Digital:** Conversión de la señal sonora continua en muestras de amplitud discretas.
-- **Análisis Acústico:** Agrupación de muestras en ventanas para extracción de características frecuenciales de la voz.
+2. *Juntamos las fotos para no confundirnos con el ruido:*
+Como en una tienda hay mucho ruido de fondo (refrigeradores, calle, gente), no podemos analizar foto por foto porque la lectura se arruinaría. Por eso, el sistema agrupa esas fotos en pequeños bloques de *25 milisegundos*.
+
+3. *Convertimos el sonido en una "imagen" (Espectrograma de Mel):*
+A cada bloque le aplicamos una fórmula matemática que traduce el sonido en un dibujo 2D (el Espectrograma):
+* *Eje Y:* Tonos graves a agudos (frecuencia).
+* *Eje X:* El tiempo que va pasando.
+* *El color:* Qué tan fuerte se dijo cada palabra (intensidad/volumen).
+
+
+4. *La IA lee la "imagen" y la vuelve texto bruto:*
+La red neuronal del celular (Google SpeechRecognizer) mira este dibujo de colores (Espectograma) y reconoce qué letras y palabras suenan ahí. El resultado es el texto en bruto tal cual se escuchó (por ejemplo: "fíale 5 lucas a don chepee").
+
+5. *El agente entiende la intención y guarda el dato en la app:*
+El "cerebro" de BarrioGo recibe ese texto, limpia la jerga ("5 lucas" - $5.000), busca en la base de datos del celular quién es "Don Chepe" (José Pérez), verifica que no se pase de su límite de crédito y guarda el fiado en la caja  despues de darle la autorizacion o aprobacion.
 
 ---
 
